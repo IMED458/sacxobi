@@ -1,0 +1,250 @@
+rules_version = '2';
+
+/**
+ * საცხობის სისტემის უსაფრთხოების წესები.
+ *
+ * პრინციპი: ავტორიზაცია Firebase Auth-ით, ავტორიზება (permissions) კი
+ * `users/{uid}` დოკუმენტიდან. ეს წესები სერვერზე სრულდება, ამიტომ პირდაპირი
+ * API/SDK გამოძახებაც ვერ გვერდს ავლის შეზღუდვებს.
+ *
+ * არსად არ არის `allow read, write: if true`.
+ */
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    function userDoc() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
+    }
+
+    function active() {
+      return signedIn()
+        && exists(/databases/$(database)/documents/users/$(request.auth.uid))
+        && userDoc().status == 'active';
+    }
+
+    function isOwner() {
+      return active() && userDoc().role == 'OWNER';
+    }
+
+    /** უფლების შემოწმება — მფლობელს ყოველთვის ყველაფერი შეუძლია. */
+    function can(p) {
+      return active() && (userDoc().role == 'OWNER' || p in userDoc().permissions);
+    }
+
+    function bootstrapped() {
+      return exists(/databases/$(database)/documents/meta/bootstrap);
+    }
+
+    /** ვის შეუძლია მარაგის მოძრაობის გამოწვევა (ტრანზაქციების ჩაწერები). */
+    function canMoveStock() {
+      return can('purchase.create')
+        || can('production.create')
+        || can('sale.create')
+        || can('sale.return')
+        || can('sale.cancel')
+        || can('transfer.fulfill')
+        || can('inventory.adjust');
+    }
+
+    /* ------------------------------ meta ------------------------------ */
+
+    // bootstrap — ერთჯერადი. login-მდეც იკითხება (ვიცოდეთ, სისტემა გამართულია თუ არა).
+    match /meta/bootstrap {
+      allow read: if true;
+      allow create: if signedIn() && !bootstrapped();
+      allow update, delete: if false;
+    }
+
+    match /meta/settings {
+      allow read: if active();
+      allow write: if can('settings.manage');
+    }
+
+    // დოკუმენტების ნუმერაცია — იწერება ბიზნეს-ტრანზაქციების შიგნით.
+    match /meta/counters {
+      allow read: if active();
+      allow write: if active();
+    }
+
+    match /meta/{docId} {
+      allow read: if active();
+      allow write: if can('settings.manage');
+    }
+
+    /* --------------------------- მომხმარებლები ------------------------- */
+
+    // username → email რუკა. login-მდე უნდა წაიკითხოს (პაროლი აქ არ ინახება).
+    match /usernames/{username} {
+      allow read: if true;
+      allow create: if signedIn() && (!bootstrapped() || can('user.manage'));
+      allow update, delete: if can('user.manage');
+    }
+
+    match /users/{userId} {
+      allow read: if signedIn() && (request.auth.uid == userId || can('user.manage'));
+
+      // პირველი მფლობელი — მხოლოდ სანამ სისტემა ინიციალიზებული არ არის.
+      allow create: if signedIn()
+        && ((!bootstrapped() && request.auth.uid == userId) || can('user.manage'));
+
+      // საკუთარ თავს შეუძლია მხოლოდ ამ ველების განახლება (role/permissions — არა).
+      allow update: if can('user.manage')
+        || (request.auth.uid == userId
+            && request.resource.data.diff(resource.data).affectedKeys()
+                 .hasOnly(['lastLoginAt', 'mustChangePassword', 'updatedAt']));
+
+      allow delete: if false;
+    }
+
+    /* ----------------------------- კატალოგი ---------------------------- */
+
+    match /products/{id} {
+      allow read: if active();
+      allow write: if can('product.manage') || can('price.manage');
+    }
+
+    match /productCategories/{id} {
+      allow read: if active();
+      allow write: if can('product.manage');
+    }
+
+    match /units/{id} {
+      allow read: if active();
+      allow write: if can('material.manage') || can('product.manage');
+    }
+
+    match /materials/{id} {
+      allow read: if active();
+      allow write: if can('material.manage');
+    }
+
+    match /recipes/{id} {
+      allow read: if active();
+      allow write: if can('recipe.manage');
+    }
+
+    match /priceHistories/{id} {
+      allow read: if active();
+      allow create: if can('price.manage') || can('product.manage');
+      allow update, delete: if false;
+    }
+
+    /* -------------------- მომწოდებლები & შესყიდვები -------------------- */
+
+    match /suppliers/{id} {
+      allow read: if can('supplier.manage') || can('purchase.create') || can('inventory.view');
+      allow write: if can('supplier.manage') || can('purchase.create');
+    }
+
+    match /purchases/{id} {
+      allow read: if can('purchase.view_cost') || can('purchase.create') || can('day.close');
+      allow create: if can('purchase.create');
+      allow update, delete: if false;
+    }
+
+    /* ------------------------------ მარაგი ----------------------------- */
+
+    match /lots/{id} {
+      allow read: if can('inventory.view') || can('production.create') || can('sale.create');
+      allow write: if canMoveStock();
+    }
+
+    match /stockLevels/{id} {
+      allow read: if active();
+      allow write: if canMoveStock();
+    }
+
+    match /stockMovements/{id} {
+      allow read: if can('inventory.view') || can('report.inventory') || can('production.create');
+      allow create: if canMoveStock();
+      allow update, delete: if false;
+    }
+
+    match /stocktakes/{id} {
+      allow read: if can('inventory.view');
+      allow create: if can('inventory.adjust');
+      allow update, delete: if false;
+    }
+
+    /* ----------------------------- წარმოება ---------------------------- */
+
+    match /productionBatches/{id} {
+      allow read: if can('production.create') || can('production.view_cost')
+        || can('report.production') || can('day.close');
+      allow create: if can('production.create');
+      allow update: if can('production.edit');
+      allow delete: if false;
+    }
+
+    match /transferRequests/{id} {
+      allow read: if active();
+      allow create: if can('transfer.create_request');
+      allow update: if can('transfer.fulfill') || can('transfer.create_request');
+      allow delete: if false;
+    }
+
+    /* ---------------------------- გაყიდვები ---------------------------- */
+
+    match /sales/{id} {
+      allow read: if can('sale.view_all') || can('sale.create') || can('day.close') || can('report.sales');
+      allow create: if can('sale.create');
+      allow update: if can('sale.cancel') || can('sale.return');
+      allow delete: if false;
+    }
+
+    match /returns/{id} {
+      allow read: if can('sale.view_all') || can('sale.create') || can('day.close') || can('report.sales');
+      allow create: if can('sale.return') || can('sale.cancel');
+      allow update, delete: if false;
+    }
+
+    /* ------------------------- ხარჯები & სალარო ------------------------ */
+
+    match /expenseCategories/{id} {
+      allow read: if active();
+      allow write: if can('settings.manage') || can('expense.manage');
+    }
+
+    match /expenses/{id} {
+      allow read: if can('expense.manage') || can('report.profit') || can('day.close');
+      allow create: if can('expense.manage');
+      allow update, delete: if false;
+    }
+
+    match /cashMovements/{id} {
+      allow read: if can('cash.access') || can('report.profit') || can('day.close');
+      allow create: if can('cash.access');
+      allow update, delete: if false;
+    }
+
+    match /shifts/{id} {
+      allow read: if active();
+      allow create: if can('shift.open');
+      allow update: if can('shift.close') || can('day.close');
+      allow delete: if false;
+    }
+
+    match /businessDays/{id} {
+      allow read: if active();
+      allow write: if can('day.close') || can('day.reopen');
+    }
+
+    /* ----------------------------- Audit Log --------------------------- */
+
+    // უცვლელი: მხოლოდ შექმნა; რედაქტირება/წაშლა არავის შეუძლია.
+    match /auditLogs/{id} {
+      allow read: if can('audit.view');
+      allow create: if active();
+      allow update, delete: if false;
+    }
+
+    /* ყველა დანარჩენი — აკრძალულია. */
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

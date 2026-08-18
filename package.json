@@ -1,0 +1,36 @@
+{
+  "name": "sacxobi",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "description": "საცხობის სრული მართვის სისტემა — წარმოება, მარაგები, POS, ფინანსები",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc --noEmit && vite build",
+    "preview": "vite preview",
+    "lint": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "create-owner": "tsx scripts/create-initial-owner.ts"
+  },
+  "dependencies": {
+    "@tailwindcss/vite": "^4.1.14",
+    "firebase": "^12.3.0",
+    "jspdf": "^3.0.1",
+    "lucide-react": "^0.546.0",
+    "react": "^19.1.1",
+    "react-dom": "^19.1.1"
+  },
+  "devDependencies": {
+    "@types/node": "^22.14.0",
+    "@types/react": "^19.1.9",
+    "@types/react-dom": "^19.1.7",
+    "@vitejs/plugin-react": "^5.0.4",
+    "firebase-admin": "^13.2.0",
+    "tailwindcss": "^4.1.14",
+    "tsx": "^4.21.0",
+    "typescript": "~5.8.2",
+    "vite": "^7.1.0",
+    "vitest": "^3.2.4"
+  }
+}
