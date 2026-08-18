@@ -7,7 +7,6 @@ const user = (over: Partial<AppUser>): AppUser => ({
   firstName: 'ტესტ',
   lastName: 'მომხმარებელი',
   username: 'test',
-  email: 'test@example.com',
   role: 'CASHIER',
   permissions: DEFAULT_ROLE_PERMISSIONS.CASHIER,
   status: 'active',

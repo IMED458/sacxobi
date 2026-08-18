@@ -6,8 +6,7 @@ import { authMessage, bootstrapOwner } from '../services/auth';
 
 /**
  * ერთჯერადი საწყისი კონფიგურაცია — პირველი მფლობელის შექმნა.
- * ეს ეკრანი ხელმისაწვდომია მხოლოდ მაშინ, როცა `meta/bootstrap` ჯერ არ არსებობს;
- * Security Rules-იც ზუსტად ამ პირობით უშვებს ჩაწერას.
+ * ეს ეკრანი ჩნდება მხოლოდ მაშინ, როცა `meta/bootstrap` დოკუმენტი ჯერ არ არსებობს.
  */
 export const BootstrapScreen: React.FC = () => {
   const { refreshBootstrap } = useAuth();
@@ -15,7 +14,6 @@ export const BootstrapScreen: React.FC = () => {
     firstName: '',
     lastName: '',
     username: '',
-    email: '',
     phone: '',
     password: '',
     repeat: ''
@@ -76,16 +74,12 @@ export const BootstrapScreen: React.FC = () => {
             <Input value={form.username} onChange={set('username')} required autoComplete="username" />
           </Field>
 
-          <Field label="ელფოსტა" required hint="საჭიროა პაროლის აღდგენისთვის">
-            <Input type="email" value={form.email} onChange={set('email')} required />
-          </Field>
-
           <Field label="ტელეფონი">
             <Input value={form.phone} onChange={set('phone')} />
           </Field>
 
           <div className="grid grid-cols-2 gap-4">
-            <Field label="პაროლი" required hint="მინიმუმ 8 სიმბოლო">
+            <Field label="პაროლი" required hint="მინიმუმ 6 სიმბოლო">
               <Input type="password" value={form.password} onChange={set('password')} required autoComplete="new-password" />
             </Field>
             <Field label="გაიმეორეთ პაროლი" required>

@@ -61,7 +61,7 @@ export const ChangePasswordModal: React.FC<{ open: boolean; onClose: () => void;
         <Field label="მიმდინარე პაროლი" required>
           <Input type="password" value={current} onChange={(e) => setCurrent(e.target.value)} autoComplete="current-password" />
         </Field>
-        <Field label="ახალი პაროლი" required hint="მინიმუმ 8 სიმბოლო">
+        <Field label="ახალი პაროლი" required hint="მინიმუმ 6 სიმბოლო">
           <Input type="password" value={next} onChange={(e) => setNext(e.target.value)} autoComplete="new-password" />
         </Field>
         <Field label="გაიმეორეთ ახალი პაროლი" required>

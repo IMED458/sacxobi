@@ -1,17 +1,15 @@
 /** მომხმარებლების ადმინისტრირება (Owner / user.manage უფლებით). */
-import { getDoc, getDocs, setDoc, writeBatch } from 'firebase/firestore';
-import { db } from '../lib/firebase';
+import { getDocs, setDoc } from 'firebase/firestore';
 import { assertPermission, DEFAULT_ROLE_PERMISSIONS } from '../lib/permissions';
 import type { AppUser, Floor, Permission, UserRole } from '../types';
-import { COL, clean, colRef, docRef } from './db';
+import { COL, clean, colRef, docRef, newId } from './db';
 import { logAudit } from './audit';
-import { normalizeUsername, provisionAuthAccount, requestPasswordReset } from './auth';
+import { findUserByUsername, hashPassword, normalizeUsername, stripSecret } from './auth';
 
 export interface CreateUserInput {
   firstName: string;
   lastName: string;
   username: string;
-  email: string;
   password: string;
   phone?: string;
   position?: string;
@@ -22,9 +20,12 @@ export interface CreateUserInput {
   mustChangePassword?: boolean;
 }
 
+/** ყველა მომხმარებელი — passwordHash-ის გარეშე. */
 export async function fetchUsers(): Promise<AppUser[]> {
   const snap = await getDocs(colRef(COL.users));
-  return snap.docs.map((d) => d.data() as AppUser).sort((a, b) => a.username.localeCompare(b.username));
+  return snap.docs
+    .map((d) => stripSecret(d.data() as AppUser))
+    .sort((a, b) => a.username.localeCompare(b.username));
 }
 
 export async function createUser(actor: AppUser, input: CreateUserInput): Promise<AppUser> {
@@ -34,21 +35,18 @@ export async function createUser(actor: AppUser, input: CreateUserInput): Promis
   if (!/^[a-z0-9._-]{3,}$/.test(username)) {
     throw new Error('username უნდა შეიცავდეს მინიმუმ 3 სიმბოლოს (ლათინური ასოები, ციფრები, . _ -)');
   }
-  if (!input.email.trim()) throw new Error('ელფოსტა სავალდებულოა (პაროლის აღდგენისთვის)');
-  if (input.password.length < 8) throw new Error('პაროლი უნდა შეიცავდეს მინიმუმ 8 სიმბოლოს');
+  if (input.password.length < 6) throw new Error('პაროლი უნდა შეიცავდეს მინიმუმ 6 სიმბოლოს');
   if (input.role === 'EMPLOYEE' && !input.assignedFloor) throw new Error('თანამშრომელს სართული უნდა მიენიჭოს');
 
-  const existing = await getDoc(docRef(COL.usernames, username));
-  if (existing.exists()) throw new Error('ასეთი username უკვე გამოყენებულია');
+  const existing = await findUserByUsername(username);
+  if (existing) throw new Error('ასეთი მომხმარებლის სახელი უკვე გამოყენებულია');
 
-  const uid = await provisionAuthAccount(input.email, input.password);
   const now = new Date().toISOString();
   const user: AppUser = clean({
-    id: uid,
+    id: newId('usr'),
     firstName: input.firstName.trim(),
     lastName: input.lastName.trim(),
     username,
-    email: input.email.trim(),
     phone: input.phone,
     position: input.position,
     role: input.role,
@@ -56,24 +54,23 @@ export async function createUser(actor: AppUser, input: CreateUserInput): Promis
     permissions: input.permissions ?? DEFAULT_ROLE_PERMISSIONS[input.role],
     status: 'active',
     mustChangePassword: input.mustChangePassword ?? true,
+    passwordHash: hashPassword(input.password),
     comment: input.comment,
     createdAt: now,
     updatedAt: now
   }) as AppUser;
 
-  const batch = writeBatch(db);
-  batch.set(docRef(COL.users, uid), user);
-  batch.set(docRef(COL.usernames, username), { username, email: user.email, uid });
-  await batch.commit();
+  await setDoc(docRef(COL.users, user.id), user);
 
+  const safe = stripSecret(user);
   await logAudit(actor, {
     action: 'USER_CREATED',
     entityType: 'user',
-    entityId: uid,
+    entityId: user.id,
     summary: `დაემატა მომხმარებელი: ${user.username} (${user.role})`,
-    after: user
+    after: safe
   });
-  return user;
+  return safe;
 }
 
 export interface UpdateUserInput {
@@ -94,26 +91,28 @@ export async function updateUser(actor: AppUser, target: AppUser, input: UpdateU
   }
   if (input.role === 'EMPLOYEE' && !input.assignedFloor) throw new Error('თანამშრომელს სართული უნდა მიენიჭოს');
 
-  const next: AppUser = clean({
-    ...target,
+  const patch = clean({
     firstName: input.firstName.trim(),
     lastName: input.lastName.trim(),
-    phone: input.phone,
-    position: input.position,
+    phone: input.phone ?? null,
+    position: input.position ?? null,
     role: input.role,
-    assignedFloor: input.role === 'EMPLOYEE' ? input.assignedFloor : input.assignedFloor,
+    assignedFloor: input.assignedFloor ?? null,
     permissions: input.permissions,
-    comment: input.comment,
+    comment: input.comment ?? null,
     updatedAt: new Date().toISOString()
-  }) as AppUser;
+  });
 
-  await setDoc(docRef(COL.users, target.id), next);
+  // merge — `passwordHash` ხელუხლებელი რჩება.
+  await setDoc(docRef(COL.users, target.id), patch, { merge: true });
+
+  const next = stripSecret({ ...target, ...patch } as AppUser);
   await logAudit(actor, {
     action: 'USER_UPDATED',
     entityType: 'user',
     entityId: target.id,
     summary: `რედაქტირდა მომხმარებელი: ${target.username}`,
-    before: target,
+    before: stripSecret(target),
     after: next
   });
   if (JSON.stringify(target.permissions) !== JSON.stringify(input.permissions) || target.role !== input.role) {
@@ -143,9 +142,28 @@ export async function setUserStatus(actor: AppUser, target: AppUser, status: 'ac
   });
 }
 
-/** Owner აგზავნის პაროლის აღდგენის ბმულს მომხმარებლის ელფოსტაზე. */
-export async function resetUserPassword(actor: AppUser, target: AppUser): Promise<void> {
+/**
+ * Owner აყენებს ახალ (დროებით) პაროლს.
+ * Audit Log-ში ჩაიწერება მხოლოდ ის, რომ reset მოხდა — არასდროს თვითონ პაროლი.
+ */
+export async function resetUserPassword(
+  actor: AppUser,
+  target: AppUser,
+  newPassword: string,
+  forceChange = true
+): Promise<void> {
   assertPermission(actor, 'password.reset');
-  if (!target.email) throw new Error('მომხმარებელს ელფოსტა არ აქვს მითითებული');
-  await requestPasswordReset(target.email, actor, target);
+  if (newPassword.length < 6) throw new Error('პაროლი უნდა შეიცავდეს მინიმუმ 6 სიმბოლოს');
+
+  await setDoc(
+    docRef(COL.users, target.id),
+    { passwordHash: hashPassword(newPassword), mustChangePassword: forceChange, updatedAt: new Date().toISOString() },
+    { merge: true }
+  );
+  await logAudit(actor, {
+    action: 'PASSWORD_RESET',
+    entityType: 'user',
+    entityId: target.id,
+    summary: `პაროლი განულდა: ${target.username}${forceChange ? ' (შესვლისას შეცვლა სავალდებულოა)' : ''}`
+  });
 }

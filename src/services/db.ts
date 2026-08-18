@@ -21,7 +21,6 @@ import type { Counters } from '../types';
 
 export const COL = {
   users: 'users',
-  usernames: 'usernames',
   products: 'products',
   productCategories: 'productCategories',
   materials: 'materials',

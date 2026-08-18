@@ -1,16 +1,24 @@
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
 import { doc, onSnapshot } from 'firebase/firestore';
-import { auth, db } from '../lib/firebase';
+import { db } from '../lib/firebase';
 import { hasPermission } from '../lib/permissions';
 import type { AppUser, Permission } from '../types';
 import { COL } from '../services/db';
-import { fetchProfile, isBootstrapped, login as doLogin, logout as doLogout, watchAuth } from '../services/auth';
+import {
+  clearSession,
+  fetchProfile,
+  isBootstrapped,
+  login as doLogin,
+  logout as doLogout,
+  readSession,
+  stripSecret
+} from '../services/auth';
 
 interface AuthState {
   user: AppUser | null;
   loading: boolean;
   bootstrapped: boolean | null;
-  /** Firebase-ის კონფიგურაციის პრობლემა (rules/auth ჯერ არ არის ჩართული). */
+  /** ბაზასთან კავშირის პრობლემა. */
   configError: string | null;
   login: (username: string, password: string) => Promise<void>;
   logout: () => Promise<void>;
@@ -30,15 +38,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     try {
       setBootstrapped(await isBootstrapped());
       setConfigError(null);
-    } catch (err) {
-      // ვერ მივწვდით `meta/bootstrap`-ს — ყველაზე ხშირი მიზეზი ისაა, რომ
-      // Firestore Security Rules ჯერ არ არის deploy-ებული.
+    } catch {
       setBootstrapped(true);
-      setConfigError(
-        (err as { code?: string })?.code === 'permission-denied'
-          ? 'მონაცემთა ბაზასთან წვდომა შეზღუდულია — გთხოვთ, დააყენოთ Firestore Security Rules (firebase deploy --only firestore:rules). დეტალები README-ში.'
-          : 'მონაცემთა ბაზასთან კავშირი ვერ დამყარდა. შეამოწმეთ Firebase-ის კონფიგურაცია.'
-      );
+      setConfigError('მონაცემთა ბაზასთან კავშირი ვერ დამყარდა — შეამოწმეთ ინტერნეტი და Firebase-ის კონფიგურაცია.');
     }
   }, []);
 
@@ -46,24 +48,25 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     void refreshBootstrap();
   }, [refreshBootstrap]);
 
+  // შენახული სესიის აღდგენა გვერდის განახლების შემდეგ.
   useEffect(() => {
-    const unsub = watchAuth(async (fbUser) => {
-      if (!fbUser) {
-        setUser(null);
-        setLoading(false);
-        return;
-      }
-      try {
-        const profile = await fetchProfile(fbUser.uid);
-        setUser(profile && profile.status === 'active' ? profile : null);
-        if (profile && profile.status !== 'active') await doLogout(null);
-      } catch {
-        setUser(null);
-      } finally {
-        setLoading(false);
-      }
-    });
-    return unsub;
+    const userId = readSession();
+    if (!userId) {
+      setLoading(false);
+      return;
+    }
+    let cancelled = false;
+    fetchProfile(userId)
+      .then((profile) => {
+        if (cancelled) return;
+        if (profile && profile.status === 'active') setUser(stripSecret(profile));
+        else clearSession();
+      })
+      .catch(() => clearSession())
+      .finally(() => !cancelled && setLoading(false));
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   // პროფილის ცოცხალი თვალყური — უფლებების/სტატუსის ცვლილება მაშინვე მოქმედებს.
@@ -75,11 +78,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         if (!snap.exists()) return;
         const next = snap.data() as AppUser;
         if (next.status !== 'active') {
-          void doLogout(null);
+          clearSession();
           setUser(null);
           return;
         }
-        setUser(next);
+        setUser(stripSecret(next));
       },
       () => undefined
     );
@@ -89,8 +92,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const login = useCallback(async (username: string, password: string) => {
     setLoading(true);
     try {
-      const profile = await doLogin(username, password);
-      setUser(profile);
+      setUser(await doLogin(username, password));
     } finally {
       setLoading(false);
     }
@@ -123,5 +125,3 @@ export function useAuth(): AuthState {
   if (!ctx) throw new Error('useAuth უნდა გამოიყენოთ AuthProvider-ის შიგნით');
   return ctx;
 }
-
-export { auth };

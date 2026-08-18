@@ -19,7 +19,6 @@ const EMPTY = {
   firstName: '',
   lastName: '',
   username: '',
-  email: '',
   password: '',
   phone: '',
   position: '',
@@ -40,6 +39,8 @@ export const UsersView: React.FC = () => {
   const [permissions, setPermissions] = useState<Permission[]>(DEFAULT_ROLE_PERMISSIONS.CASHIER);
   const [saving, setSaving] = useState(false);
   const [resetTarget, setResetTarget] = useState<AppUser | null>(null);
+  const [resetPassword, setResetPassword] = useState('');
+  const [resetForceChange, setResetForceChange] = useState(true);
 
   const openNew = () => {
     setEditing(null);
@@ -54,7 +55,6 @@ export const UsersView: React.FC = () => {
       firstName: target.firstName,
       lastName: target.lastName,
       username: target.username,
-      email: target.email,
       password: '',
       phone: target.phone ?? '',
       position: target.position ?? '',
@@ -96,7 +96,6 @@ export const UsersView: React.FC = () => {
           firstName: form.firstName,
           lastName: form.lastName,
           username: form.username,
-          email: form.email,
           password: form.password,
           phone: form.phone || undefined,
           position: form.position || undefined,
@@ -130,9 +129,10 @@ export const UsersView: React.FC = () => {
     if (!user || !resetTarget) return;
     setSaving(true);
     try {
-      await resetUserPassword(user, resetTarget);
-      toast.success(`პაროლის აღდგენის ბმული გაიგზავნა: ${resetTarget.email}`);
+      await resetUserPassword(user, resetTarget, resetPassword, resetForceChange);
+      toast.success(`${resetTarget.username}: ახალი პაროლი დაყენებულია`);
       setResetTarget(null);
+      setResetPassword('');
     } catch (err) {
       toast.error(err);
     } finally {
@@ -247,14 +247,11 @@ export const UsersView: React.FC = () => {
             <Field label="username" required hint={editing ? 'შეცვლა შეუძლებელია' : 'ლათინური ასოები/ციფრები'}>
               <Input value={form.username} onChange={(e) => setForm({ ...form, username: e.target.value })} disabled={!!editing} />
             </Field>
-            <Field label="ელფოსტა" required hint={editing ? 'შეცვლა შეუძლებელია' : 'პაროლის აღდგენისთვის'}>
-              <Input type="email" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} disabled={!!editing} />
-            </Field>
             <Field label="პოზიცია">
               <Input value={form.position} onChange={(e) => setForm({ ...form, position: e.target.value })} />
             </Field>
             {!editing && (
-              <Field label="დროებითი პაროლი" required hint="მინიმუმ 8 სიმბოლო">
+              <Field label="პაროლი" required hint="მინიმუმ 6 სიმბოლო — გადაეცით თანამშრომელს">
                 <Input type="text" value={form.password} onChange={(e) => setForm({ ...form, password: e.target.value })} />
               </Field>
             )}
@@ -317,24 +314,32 @@ export const UsersView: React.FC = () => {
       <Modal
         open={!!resetTarget}
         onClose={() => setResetTarget(null)}
-        title="პაროლის აღდგენა"
+        title={`ახალი პაროლი — ${resetTarget?.username ?? ''}`}
         size="sm"
         footer={
           <>
             <Button variant="secondary" onClick={() => setResetTarget(null)}>
               გაუქმება
             </Button>
-            <Button onClick={() => void doReset()} loading={saving}>
-              ბმულის გაგზავნა
+            <Button onClick={() => void doReset()} loading={saving} disabled={resetPassword.length < 6}>
+              პაროლის დაყენება
             </Button>
           </>
         }
       >
-        <p className="text-sm text-slate-600">
-          პაროლის აღდგენის ბმული გაიგზავნება მისამართზე{' '}
-          <span className="font-bold text-slate-900">{resetTarget?.email}</span>. პაროლს თავად მომხმარებელი დააყენებს — სისტემა
-          პაროლს არასდროს ინახავს.
-        </p>
+        <div className="space-y-4">
+          <Field label="ახალი პაროლი" required hint="მინიმუმ 6 სიმბოლო — გადაეცით თანამშრომელს">
+            <Input value={resetPassword} onChange={(e) => setResetPassword(e.target.value)} autoComplete="new-password" />
+          </Field>
+          <Checkbox
+            checked={resetForceChange}
+            onChange={setResetForceChange}
+            label="შემდეგ შესვლაზე პაროლის შეცვლა სავალდებულოა"
+          />
+          <p className="text-[11px] text-slate-400">
+            Audit Log-ში ჩაიწერება მხოლოდ ის, რომ პაროლი განულდა — თვითონ პაროლი არსად არ ინახება ღიად.
+          </p>
+        </div>
       </Modal>
     </div>
   );

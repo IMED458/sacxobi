@@ -1,12 +1,11 @@
 /**
  * Firebase-ის ინიციალიზაცია.
  *
- * ყველა მონაცემი ინახება Cloud Firestore-ში; ავტორიზაცია — Firebase
- * Authentication (email/password). Web-config საიდუმლო არაა (ის ბრაუზერშივე
- * ჩანს) — რეალურ დაცვას Firestore Security Rules უზრუნველყოფს.
+ * ყველა მონაცემი ინახება Cloud Firestore-ში. ავტორიზაცია საკუთარია —
+ * მომხმარებლის სახელი + პაროლი (იხ. `src/services/auth.ts`), Firebase
+ * Authentication არ გამოიყენება.
  */
 import { initializeApp, type FirebaseApp } from 'firebase/app';
-import { getAuth, type Auth } from 'firebase/auth';
 import { getFirestore, type Firestore } from 'firebase/firestore';
 
 const env = import.meta.env;
@@ -22,16 +21,4 @@ export const firebaseConfig = {
 };
 
 export const firebaseApp: FirebaseApp = initializeApp(firebaseConfig);
-export const auth: Auth = getAuth(firebaseApp);
 export const db: Firestore = getFirestore(firebaseApp);
-
-/**
- * ცალკე (მეორადი) Firebase აპლიკაცია — ახალი მომხმარებლის შესაქმნელად.
- * ის საჭიროა იმისთვის, რომ createUserWithEmailAndPassword-მა მიმდინარე
- * (owner) სესია არ ჩაანაცვლოს.
- */
-let secondary: FirebaseApp | null = null;
-export function getSecondaryAuth(): Auth {
-  if (!secondary) secondary = initializeApp(firebaseConfig, 'user-provisioning');
-  return getAuth(secondary);
-}

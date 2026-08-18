@@ -61,7 +61,8 @@ export interface AppUser {
   firstName: string;
   lastName: string;
   username: string;
-  email: string;
+  /** bcrypt-hash — UI-ში არასდროს ბრუნდება. */
+  passwordHash?: string;
   phone?: string;
   position?: string;
   role: UserRole;

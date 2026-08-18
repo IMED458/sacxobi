@@ -14,8 +14,8 @@
 | --- | --- |
 | UI | React 19 + TypeScript + Vite + Tailwind CSS v4 + lucide-react |
 | მონაცემები | Cloud Firestore (client SDK, ატომური ტრანზაქციები) |
-| ავტორიზაცია | Firebase Authentication (email/password) |
-| ავტორიზება | Firestore Security Rules + `users/{uid}.permissions` |
+| ავტორიზაცია | საკუთარი — მომხმარებლის სახელი + პაროლი (bcrypt-hash) |
+| ავტორიზება | როლი + granular permissions `users/{id}.permissions` |
 | PDF | jsPDF + ჩაშენებული Noto Sans Georgian (Unicode) |
 | ტესტები | Vitest |
 | ჰოსტინგი | GitHub Pages (GitHub Actions) |
@@ -28,7 +28,7 @@ src/
   types/         დომენის ტიპები
   services/      ბიზნეს-ლოგიკა დომენების მიხედვით
     db.ts            კოლექციები, ID/დოკუმენტის ნომრები, undefined-ის გასუფთავება
-    auth.ts          login, bootstrap, პაროლები
+    auth.ts          login, სესია, bootstrap, პაროლები (bcrypt)
     users.ts         მომხმარებლების ადმინისტრირება
     catalog.ts       პროდუქტები, მასალები, რეცეპტები, მომწოდებლები, seed
     inventory.ts     FIFO პარტიები, ნაშთები, მოძრაობები (StockOperation)
@@ -45,7 +45,6 @@ src/
   context/       AuthContext, DataContext (real-time master data)
   components/    ui კიტი, layout (Header, Sidebar)
   pages/         ეკრანები
-scripts/         create-initial-owner.ts (Admin SDK)
 ```
 
 ### ფულის და თარიღების წესები
@@ -62,9 +61,10 @@ scripts/         create-initial-owner.ts (Admin SDK)
 ## 2. Prerequisites
 
 * Node.js 20+ (რეკომენდებულია 22)
-* Firebase პროექტი, სადაც ჩართულია:
-  * **Authentication → Sign-in method → Email/Password**
-  * **Firestore Database** (production mode)
+* Firebase პროექტი ჩართული **Firestore Database**-ით
+
+Firebase Authentication საჭირო **არ არის** — მომხმარებლებს თქვენ ქმნით
+პროგრამიდან.
 
 ---
 
@@ -80,7 +80,7 @@ npm run dev
 
 `.env` არასავალდებულოა: თუ ცვლადები არ არის, გამოიყენება პროექტის ნაგულისხმევი
 web-კონფიგურაცია. Firebase-ის web-config **საიდუმლო არ არის** — ის ბრაუზერშივე
-ჩანს ნებისმიერ Firebase აპლიკაციაში; რეალურ დაცვას Security Rules იძლევა.
+ჩანს ნებისმიერ Firebase აპლიკაციაში.
 
 ```
 VITE_FIREBASE_API_KEY=
@@ -92,85 +92,51 @@ VITE_FIREBASE_APP_ID=
 VITE_FIREBASE_MEASUREMENT_ID=
 ```
 
-`.env` gitignore-შია. სერვის-ანგარიშის გასაღები (`serviceAccount*.json`) — ასევე.
+`.env` gitignore-შია.
 
 ---
 
-## 4. Firebase-ის კონფიგურაცია
+## 4. Firestore-ის კონფიგურაცია
 
-### 4.1 Authentication
+პროგრამა Firebase Authentication-ს **არ იყენებს** — მომხმარებლებს თქვენ ქმნით
+პროგრამიდან (სახელი + პაროლი), ხოლო პაროლი Firestore-ში bcrypt-hash-ად ინახება.
+შესაბამისად Firestore-ის წესები კლიენტიდან წვდომას უნდა უშვებდეს; ისინი
+Firebase Console → **Firestore Database → Rules** განყოფილებაში კონფიგურდება
+(ზუსტი ტექსტი — იხ. პროექტის ჩაბარების შენიშვნები).
 
-Firebase Console → **Authentication → Sign-in method → Email/Password → Enable**.
+დამატებითი დაცვისთვის რეკომენდებულია **Firebase App Check**-ის ჩართვა.
 
-პაროლი არასდროს ინახება Firestore-ში — არც ღიად, არც hash-ად. მას მთლიანად
-Firebase Authentication მართავს.
-
-### 4.2 Security Rules
-
-```bash
-npm install -g firebase-tools
-firebase login
-firebase deploy --only firestore:rules --project <PROJECT_ID>
-```
-
-წესები (`firestore.rules`) რეალურად იცავს მონაცემებს:
-
-* არსად არ არის `allow read, write: if true`;
-* ყველა წვდომა მოითხოვს ავტორიზებულ და **აქტიურ** მომხმარებელს;
-* უფლებები მოწმდება `users/{uid}.permissions`-იდან — ანუ **პირდაპირი API
-  გამოძახებაც ვერ გვერდს ავლის შეზღუდვებს**, არა მხოლოდ ღილაკები იმალება;
-* `auditLogs` — მხოლოდ `create`; `update`/`delete` არავის შეუძლია;
-* `stockMovements`, `purchases`, `returns`, `stocktakes` — უცვლელი ჩანაწერები;
-* მომხმარებელს საკუთარ დოკუმენტში მხოლოდ `lastLoginAt` / `mustChangePassword`
-  ველების შეცვლა შეუძლია — **role/permissions-ის თვითგაზრდა შეუძლებელია**;
-* `meta/bootstrap`-ის შექმნა შეიძლება მხოლოდ ერთხელ (პირველი მფლობელისთვის).
-
-### 4.3 Firestore indexes
+### Firestore indexes
 
 დამატებითი კომპოზიტური ინდექსი **არ სჭირდება** — ყველა query ერთ ველზე
-ტოლობას ან ერთ დიაპაზონს იყენებს (`businessDate`, `openKey`, `shiftId`, `userId`).
-`firestore.indexes.json` ცარიელია სწორედ ამიტომ.
-
-```bash
-firebase deploy --only firestore:indexes --project <PROJECT_ID>
-```
+ტოლობას ან ერთ დიაპაზონს იყენებს (`businessDate`, `openKey`, `shiftId`,
+`userId`, `username`).
 
 ---
 
-## 5. პირველი მფლობელის (Owner) შექმნა
+## 5. მომხმარებლები და პაროლები
 
-**პაროლი არასდროს არ არის კოდში და login გვერდზე არავითარი მინიშნება არ წერია.**
-
-### ვარიანტი A — აპლიკაციიდან (რეკომენდებული)
+**პაროლი არსად არ არის კოდში და login გვერდზე არავითარი მინიშნება არ წერია.**
 
 პირველივე გახსნისას გამოჩნდება **„სისტემის საწყისი კონფიგურაცია"** — შეიყვანეთ
-სახელი, username, ელფოსტა და პაროლი. Security Rules ამ ჩაწერას უშვებს მხოლოდ
-მაშინ, სანამ `meta/bootstrap` არ არსებობს — ანუ ზუსტად ერთხელ. შემდეგ ეს გზა
-სამუდამოდ იხურება.
+სახელი, გვარი, username და პაროლი. ეს ეკრანი მხოლოდ ერთხელ ჩნდება
+(`meta/bootstrap` დოკუმენტი აღნიშნავს, რომ სისტემა უკვე გამართულია).
 
-### ვარიანტი B — server-side script (Admin SDK)
-
-```bash
-export GOOGLE_APPLICATION_CREDENTIALS=./serviceAccount.json
-export OWNER_USERNAME=imed
-export OWNER_EMAIL=owner@example.com
-export OWNER_PASSWORD='ძლიერი-პაროლი'
-export OWNER_FIRST_NAME=გიორგი
-export OWNER_LAST_NAME=იმედაშვილი
-npm run create-owner
-```
-
-Credentials მხოლოდ environment-იდან მოდის და Git-ში არ ხვდება.
+დანარჩენ მომხმარებლებს Owner ქმნის **„ადმინისტრაცია → მომხმარებლები"**
+გვერდიდან: სახელი, გვარი, username, პაროლი, როლი, სართული და დეტალური
+უფლებები. ელფოსტა საერთოდ არ არის საჭირო.
 
 ### პაროლების ნაკადები
 
-1. **Owner → თანამშრომლის პაროლის აღდგენა** — „მომხმარებლები" გვერდზე
-   🔑 ღილაკი აგზავნის Firebase-ის აღდგენის ბმულს მომხმარებლის ელფოსტაზე.
+1. **Owner → თანამშრომლის პაროლი** — „მომხმარებლები" გვერდზე 🔑 ღილაკი:
+   Owner აყენებს ახალ პაროლს და გადასცემს თანამშრომელს (სურვილისამებრ
+   „შემდეგ შესვლაზე შეცვლა სავალდებულოა").
 2. **მომხმარებელი → საკუთარი პაროლი** — header-ის 🔑 ღილაკი (მოითხოვს
    მიმდინარე პაროლს).
-3. **„პაროლი დაგავიწყდათ?"** login გვერდზე — username → ელფოსტაზე ბმული.
 
-Audit Log-ში ჩაიწერება მხოლოდ ის, რომ reset მოხდა — **არასდროს თვითონ პაროლი**.
+პაროლი ინახება მხოლოდ **bcrypt-hash**-ად (`passwordHash`), UI-ში არასდროს
+ბრუნდება და Audit Log-ში არასდროს ხვდება — ლოგში მხოლოდ ის ჩანს, რომ პაროლი
+შეიცვალა ან განულდა.
 
 ---
 
@@ -191,8 +157,6 @@ npm run preview
 
 1. GitHub → **Settings → Pages → Source: Deploy from a branch → `gh-pages` / root**
 2. `vite.config.ts`-ში `base: '/sacxobi/'` — რეპოზიტორიის სახელს უნდა ემთხვეოდეს.
-3. Firebase Console → **Authentication → Settings → Authorized domains** —
-   დაამატეთ `<user>.github.io`.
 
 ---
 
@@ -295,8 +259,7 @@ Expected Cash = საწყისი + ნაღდი გაყიდვებ
 
 | კოლექცია | შიგთავსი |
 | --- | --- |
-| `users` | მომხმარებლის პროფილი, როლი, permissions, სართული, სტატუსი |
-| `usernames` | `username → {email, uid}` (login-მდე წასაკითხი რუკა) |
+| `users` | პროფილი, როლი, permissions, სართული, სტატუსი, `passwordHash` |
 | `products` | მზა/გასაყიდი პროდუქტები (`PRODUCED` ან `RESALE`) |
 | `productCategories`, `units` | კატალოგის ცნობარები |
 | `materials` | ნედლეული (ერთეული, საცავი, მინიმალური ნაშთი) |
