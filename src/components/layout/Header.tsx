@@ -49,7 +49,7 @@ export const Header: React.FC<Props> = ({ onNavigate, dayClosed }) => {
       <div className="flex items-center gap-2">
         {myShift ? (
           <button
-            onClick={() => onNavigate('shift')}
+            onClick={() => onNavigate('cash')}
             className="hidden md:flex items-center gap-2 bg-emerald-600/15 border border-emerald-500/30 text-emerald-300 px-3 py-1.5 rounded-xl text-xs font-bold cursor-pointer hover:bg-emerald-600/25"
           >
             <Receipt className="w-3.5 h-3.5" />
@@ -57,7 +57,7 @@ export const Header: React.FC<Props> = ({ onNavigate, dayClosed }) => {
           </button>
         ) : (
           <button
-            onClick={() => onNavigate('shift')}
+            onClick={() => onNavigate('cash')}
             className="hidden md:flex items-center gap-2 bg-slate-800 border border-slate-700 text-slate-300 px-3 py-1.5 rounded-xl text-xs font-bold cursor-pointer hover:bg-slate-700"
           >
             <Receipt className="w-3.5 h-3.5" />
@@ -106,7 +106,7 @@ export const Header: React.FC<Props> = ({ onNavigate, dayClosed }) => {
                     key={x.material.id}
                     onClick={() => {
                       setShowNotifications(false);
-                      onNavigate(x.material.defaultStorageLocation === 'FRIDGE' ? 'stock_fridge' : 'stock_warehouse');
+                      onNavigate('stock');
                     }}
                     className="w-full text-left px-4 py-3 hover:bg-slate-50 cursor-pointer flex items-start gap-2"
                   >

@@ -54,7 +54,10 @@ export type Permission =
   | 'audit.view'
   | 'day.close'
   | 'day.reopen'
-  | 'settings.manage';
+  | 'settings.manage'
+  | 'order.manage'
+  | 'order.fulfill'
+  | 'admin.delete';
 
 export interface AppUser {
   id: string; // === Firebase Auth uid
@@ -97,8 +100,10 @@ export interface FinishedProduct {
   kind: 'PRODUCED' | 'RESALE';
   /** მხოლოდ PRODUCED-ისთვის. */
   productionFloor?: Floor;
-  /** მარაგის ადგილი, საიდანაც POS ყიდის. */
-  salesLocation: Floor;
+  /** მარაგის ადგილი, საიდანაც POS ყიდის (სართული, საწყობი ან მაცივარი). */
+  salesLocation: StockLocation;
+  /** სურათის ბმული (მაგ. Google-დან) — POS-ის ბარათზე გამოჩნდება. */
+  imageUrl?: string;
   unitSymbol: string;
   /** გრამაჟი — production batch-ში ინახება snapshot-ად. */
   weightGrams?: number;
@@ -125,6 +130,7 @@ export interface Material {
   id: string;
   name: string;
   code: string;
+  imageUrl?: string;
   unitSymbol: string;
   defaultStorageLocation: StorageLocation;
   minStock: number;
@@ -400,7 +406,7 @@ export interface SaleItem {
   lineTotalTetri: number;
   costTotalTetri: number;
   profitTetri: number;
-  location: Floor;
+  location: StockLocation;
 }
 
 export interface Sale {
@@ -458,6 +464,59 @@ export interface SaleReturn {
   createdBy: string;
   createdByName: string;
   createdAt: string;
+}
+
+/* ------------------------------------------------------------------ */
+/* შეკვეთები                                                           */
+/* ------------------------------------------------------------------ */
+
+export type OrderStatus = 'NEW' | 'PREPARING' | 'READY' | 'FULFILLED' | 'CANCELLED';
+
+export interface OrderItem {
+  id: string;
+  productId: string;
+  productName: string;
+  unitSymbol: string;
+  quantity: number;
+  priceTetri: number;
+  lineTotalTetri: number;
+}
+
+export interface OrderPayment {
+  id: string;
+  amountTetri: number;
+  paymentMethod: PaymentMethod;
+  date: string;
+  byUserId: string;
+  byUserName: string;
+  comment?: string;
+}
+
+export interface Order {
+  id: string;
+  orderNo: string; // ORD-2026-000001
+  customerName: string;
+  customerPhone?: string;
+  date: string;
+  businessDate: string;
+  /** როდის უნდა იყოს მზად. */
+  dueDate?: string;
+  items: OrderItem[];
+  totalTetri: number;
+  paidTetri: number;
+  balanceDueTetri: number;
+  payments: OrderPayment[];
+  status: OrderStatus;
+  comment?: string;
+  createdBy: string;
+  createdByName: string;
+  createdAt: string;
+  fulfilledAt?: string;
+  fulfilledBy?: string;
+  fulfilledByName?: string;
+  saleId?: string;
+  saleNo?: string;
+  cancelReason?: string;
 }
 
 /* ------------------------------------------------------------------ */
@@ -634,6 +693,7 @@ export interface AppSettings {
 
 export interface Counters {
   sale: number;
+  order: number;
   purchase: number;
   production: number;
   transfer: number;

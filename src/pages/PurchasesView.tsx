@@ -10,6 +10,8 @@ import { LOCATION_LABELS } from '../lib/permissions';
 import { createPurchase, type PurchaseItemInput } from '../services/purchases';
 import { fetchPurchasesRange } from '../services/reports';
 import type { PaymentMethod, Purchase, StockLocation } from '../types';
+import { DeleteRecordButton } from '../components/DeleteRecordButton';
+import { COL } from '../services/db';
 
 interface DraftLine extends Omit<PurchaseItemInput, 'unitCostTetri'> {
   unitCostText: string;
@@ -307,6 +309,7 @@ export const PurchaseHistoryView: React.FC = () => {
               {showCost && <Th className="text-right">გადახდილი</Th>}
               {showCost && <Th className="text-right">დავალიანება</Th>}
               <Th>შემქმნელი</Th>
+              <Th />
             </tr>
           }
         >
@@ -320,6 +323,17 @@ export const PurchaseHistoryView: React.FC = () => {
               {showCost && <Td className="text-right text-emerald-700">{formatMoney(p.paidTetri)}</Td>}
               {showCost && <Td className="text-right text-red-600">{formatMoney(p.balanceTetri)}</Td>}
               <Td className="text-xs">{p.createdByName}</Td>
+              <Td onClick={(e) => e.stopPropagation()}>
+                <div className="flex justify-end">
+                  <DeleteRecordButton
+                    collection={COL.purchases}
+                    id={p.id}
+                    entityType="purchase"
+                    label={`შესყიდვა ${p.documentNo}`}
+                    warning="დოკუმენტი წაიშლება, მაგრამ შემოსული მარაგი ავტომატურად არ ჩამოიწერება — საჭიროებისას გამოიყენეთ ინვენტარიზაცია."
+                  />
+                </div>
+              </Td>
             </tr>
           ))}
         </Table>

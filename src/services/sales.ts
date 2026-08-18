@@ -19,7 +19,8 @@ import type {
   ReturnItem,
   Sale,
   SaleItem,
-  SaleReturn
+  SaleReturn,
+  StockLocation
 } from '../types';
 import { COL, buildDocNo, clean, colRef, docRef, newId, readCounters } from './db';
 import { logAuditTx } from './audit';
@@ -31,6 +32,28 @@ export interface CartLine {
   quantity: number;
   /** ფაქტობრივი გასაყიდი ფასი თეთრში (default = პროდუქტის ფასი). */
   priceTetri: number;
+  /** საიდან ჩამოიწეროს; default — პროდუქტის `salesLocation`. */
+  location?: StockLocation;
+}
+
+/** სად დევს რეალურად პროდუქტი: ჯერ მითითებული ადგილი, თუ ცარიელია — სადაც მარაგია. */
+export function resolveSaleLocation(
+  product: FinishedProduct,
+  quantityAt: (location: StockLocation) => number
+): StockLocation {
+  const preferred = product.salesLocation;
+  if (quantityAt(preferred) > 0) return preferred;
+  const candidates: StockLocation[] = ['UPPER_FLOOR', 'LOWER_FLOOR', 'FRIDGE', 'WAREHOUSE'];
+  let best = preferred;
+  let bestQty = 0;
+  candidates.forEach((loc) => {
+    const qty = quantityAt(loc);
+    if (qty > bestQty) {
+      best = loc;
+      bestQty = qty;
+    }
+  });
+  return bestQty > 0 ? best : preferred;
 }
 
 export interface SaleInput {
@@ -80,7 +103,7 @@ export async function createSale(user: AppUser, settings: AppSettings, input: Sa
       itemId: l.product.id,
       itemName: l.product.name,
       unitSymbol: l.product.unitSymbol,
-      location: l.product.salesLocation,
+      location: l.location ?? l.product.salesLocation,
       quantity: l.quantity,
       movementType: 'SALE'
     })
@@ -115,7 +138,7 @@ export async function createSale(user: AppUser, settings: AppSettings, input: Sa
         lineTotalTetri,
         costTotalTetri,
         profitTetri: lineTotalTetri - costTotalTetri,
-        location: l.product.salesLocation
+        location: l.location ?? l.product.salesLocation
       };
     });
 

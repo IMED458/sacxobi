@@ -9,6 +9,8 @@ import { formatMoney, formatQty } from '../lib/money';
 import { downloadBlob, generateReceiptPdf, generateWaybillPdf, PAYMENT_LABELS } from '../lib/pdf';
 import { logAudit } from '../services/audit';
 import { cancelSale, createReturn, type ReturnLineInput } from '../services/sales';
+import { DeleteRecordButton } from '../components/DeleteRecordButton';
+import { COL } from '../services/db';
 import { fetchSalesRange, fetchReturnsRange } from '../services/reports';
 import type { Sale, SaleReturn } from '../types';
 
@@ -260,6 +262,14 @@ export const SalesHistoryView: React.FC<{ mode?: 'sales' | 'returns' }> = ({ mod
                       <XCircle className="w-4 h-4" />
                     </button>
                   )}
+                  <DeleteRecordButton
+                    collection={COL.sales}
+                    id={s.id}
+                    entityType="sale"
+                    label={`გაყიდვა ${s.saleNo}`}
+                    warning="გაყიდვა სამუდამოდ წაიშლება. მარაგი უკან არ ბრუნდება — მარაგის დასაბრუნებლად გამოიყენეთ გაუქმება ან დაბრუნება."
+                    onDeleted={load}
+                  />
                 </div>
               </Td>
             </tr>

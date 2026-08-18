@@ -7,6 +7,7 @@ import { deleteDoc, getDocs, setDoc, writeBatch } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 import type {
   AppUser,
+  StockLocation,
   ExpenseCategory,
   FinishedProduct,
   Floor,
@@ -65,7 +66,8 @@ export interface ProductInput {
   code: string;
   kind: 'PRODUCED' | 'RESALE';
   productionFloor?: Floor;
-  salesLocation: Floor;
+  salesLocation: StockLocation;
+  imageUrl?: string;
   unitSymbol: string;
   weightGrams?: number;
   weightSettingKey?: FinishedProduct['weightSettingKey'];
@@ -87,6 +89,7 @@ export async function saveProduct(user: AppUser, input: ProductInput, before?: F
     kind: input.kind,
     productionFloor: input.kind === 'PRODUCED' ? input.productionFloor : undefined,
     salesLocation: input.salesLocation,
+    imageUrl: input.imageUrl?.trim() || undefined,
     unitSymbol: input.unitSymbol,
     weightGrams: input.weightGrams,
     weightSettingKey: input.weightSettingKey,
@@ -180,6 +183,7 @@ export interface MaterialInput {
   defaultStorageLocation: StorageLocation;
   minStock: number;
   description?: string;
+  imageUrl?: string;
   active: boolean;
 }
 
@@ -195,6 +199,7 @@ export async function saveMaterial(user: AppUser, input: MaterialInput, before?:
     defaultStorageLocation: input.defaultStorageLocation,
     minStock: input.minStock,
     description: input.description,
+    imageUrl: input.imageUrl?.trim() || undefined,
     active: input.active,
     createdAt: before?.createdAt ?? now,
     updatedAt: now

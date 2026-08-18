@@ -36,7 +36,10 @@ export const PERMISSION_LABELS: Record<Permission, string> = {
   'audit.view': 'Audit Log-ის ნახვა',
   'day.close': 'დღის დახურვა',
   'day.reopen': 'დღის ხელახლა გახსნა',
-  'settings.manage': 'პარამეტრების მართვა'
+  'settings.manage': 'პარამეტრების მართვა',
+  'order.manage': 'შეკვეთების მართვა',
+  'order.fulfill': 'შეკვეთის გაცემა',
+  'admin.delete': 'ჩანაწერების წაშლა (ადმინი)'
 };
 
 export const PERMISSION_GROUPS: { title: string; items: Permission[] }[] = [
@@ -52,7 +55,9 @@ export const PERMISSION_GROUPS: { title: string; items: Permission[] }[] = [
       'cash.access',
       'shift.open',
       'shift.close',
-      'shift.view_all'
+      'shift.view_all',
+      'order.manage',
+      'order.fulfill'
     ]
   },
   {
@@ -86,7 +91,7 @@ export const PERMISSION_GROUPS: { title: string; items: Permission[] }[] = [
   },
   {
     title: 'ადმინისტრირება',
-    items: ['user.manage', 'password.reset', 'audit.view', 'day.close', 'day.reopen', 'settings.manage']
+    items: ['user.manage', 'password.reset', 'audit.view', 'day.close', 'day.reopen', 'settings.manage', 'admin.delete']
   }
 ];
 
@@ -142,9 +147,20 @@ export const DEFAULT_ROLE_PERMISSIONS: Record<UserRole, Permission[]> = {
     'report.sales',
     'report.production',
     'report.inventory',
-    'day.close'
+    'day.close',
+    'order.manage',
+    'order.fulfill'
   ],
-  CASHIER: ['pos.access', 'sale.create', 'sale.view_all', 'cash.access', 'shift.open', 'shift.close'],
+  CASHIER: [
+    'pos.access',
+    'sale.create',
+    'sale.view_all',
+    'cash.access',
+    'shift.open',
+    'shift.close',
+    'order.manage',
+    'order.fulfill'
+  ],
   EMPLOYEE: ['production.create', 'transfer.fulfill', 'inventory.view']
 };
 

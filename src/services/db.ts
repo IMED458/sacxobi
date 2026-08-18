@@ -35,6 +35,7 @@ export const COL = {
   productionBatches: 'productionBatches',
   transferRequests: 'transferRequests',
   sales: 'sales',
+  orders: 'orders',
   returns: 'returns',
   expenses: 'expenses',
   expenseCategories: 'expenseCategories',
@@ -81,6 +82,7 @@ export function clean<T>(value: T): T {
 
 export const DEFAULT_COUNTERS: Counters = {
   sale: 0,
+  order: 0,
   purchase: 0,
   production: 0,
   transfer: 0,
@@ -92,6 +94,7 @@ export const DEFAULT_COUNTERS: Counters = {
 
 const PREFIX: Record<keyof Omit<Counters, 'year'>, string> = {
   sale: 'SAL',
+  order: 'ORD',
   purchase: 'PUR',
   production: 'PRD',
   transfer: 'TRF',

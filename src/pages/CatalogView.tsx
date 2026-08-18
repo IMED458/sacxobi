@@ -5,10 +5,10 @@ import { useToast } from '../components/ui/Toast';
 import { useAuth } from '../context/AuthContext';
 import { useData } from '../context/DataContext';
 import { formatMoney, tetriToInput, toTetri } from '../lib/money';
-import { FLOOR_LABELS } from '../lib/permissions';
+import { FLOOR_LABELS, LOCATION_LABELS } from '../lib/permissions';
 import { changeProductPrice, saveProduct, saveProductCategory, type ProductInput } from '../services/catalog';
 import { newId } from '../services/db';
-import type { FinishedProduct, Floor } from '../types';
+import type { FinishedProduct, Floor, StockLocation } from '../types';
 
 const EMPTY: ProductInput = {
   name: '',
@@ -30,6 +30,7 @@ export const CatalogView: React.FC = () => {
   const [editing, setEditing] = useState<FinishedProduct | null>(null);
   const [form, setForm] = useState<ProductInput>({ ...EMPTY });
   const [priceText, setPriceText] = useState('0');
+  const [imageUrl, setImageUrl] = useState('');
   const [weightText, setWeightText] = useState('');
   const [saving, setSaving] = useState(false);
 
@@ -45,6 +46,7 @@ export const CatalogView: React.FC = () => {
     setForm({ ...EMPTY });
     setPriceText('0');
     setWeightText('');
+    setImageUrl('');
     setShowForm(true);
   };
 
@@ -63,8 +65,10 @@ export const CatalogView: React.FC = () => {
       sellingPriceTetri: p.sellingPriceTetri,
       categoryId: p.categoryId,
       color: p.color,
+      imageUrl: p.imageUrl,
       active: p.active
     });
+    setImageUrl(p.imageUrl ?? '');
     setPriceText(tetriToInput(p.sellingPriceTetri));
     setWeightText(p.weightGrams ? String(p.weightGrams) : '');
     setShowForm(true);
@@ -78,6 +82,7 @@ export const CatalogView: React.FC = () => {
         user,
         {
           ...form,
+          imageUrl: imageUrl.trim() || undefined,
           sellingPriceTetri: toTetri(priceText),
           weightGrams: form.weightSettingKey ? undefined : weightText ? Number(weightText) : undefined
         },
@@ -169,15 +174,26 @@ export const CatalogView: React.FC = () => {
             {products.map((p) => (
               <tr key={p.id} className="hover:bg-slate-50">
                 <Td className="font-semibold text-slate-800">
-                  <span className="inline-block w-2.5 h-2.5 rounded-full mr-2" style={{ background: p.color || '#f59e0b' }} />
-                  {p.name}
+                  <span className="flex items-center gap-2.5">
+                    {p.imageUrl ? (
+                      <img src={p.imageUrl} alt="" className="w-9 h-9 rounded-lg object-cover border border-slate-200" />
+                    ) : (
+                      <span
+                        className="w-9 h-9 rounded-lg flex items-center justify-center text-[10px] font-bold text-white"
+                        style={{ background: p.color || '#f59e0b' }}
+                      >
+                        {p.name.slice(0, 2)}
+                      </span>
+                    )}
+                    {p.name}
+                  </span>
                 </Td>
                 <Td className="text-xs text-slate-500">{p.code}</Td>
                 <Td>
                   <Badge tone={p.kind === 'PRODUCED' ? 'amber' : 'blue'}>{p.kind === 'PRODUCED' ? 'ჩვენი წარმოება' : 'შესყიდული'}</Badge>
                 </Td>
                 <Td className="text-xs">{p.productionFloor ? FLOOR_LABELS[p.productionFloor] : '—'}</Td>
-                <Td className="text-xs">{FLOOR_LABELS[p.salesLocation]}</Td>
+                <Td className="text-xs">{LOCATION_LABELS[p.salesLocation]}</Td>
                 <Td className="text-xs">
                   {p.weightSettingKey
                     ? `${settings[p.weightSettingKey]} გ (პარამეტრებიდან)`
@@ -256,10 +272,15 @@ export const CatalogView: React.FC = () => {
               </Select>
             </Field>
           )}
-          <Field label="საიდან იყიდება" required>
-            <Select value={form.salesLocation} onChange={(e) => setForm({ ...form, salesLocation: e.target.value as Floor })}>
-              <option value="UPPER_FLOOR">{FLOOR_LABELS.UPPER_FLOOR}</option>
-              <option value="LOWER_FLOOR">{FLOOR_LABELS.LOWER_FLOOR}</option>
+          <Field label="საიდან იყიდება" required hint="სად ინახება გასაყიდი მარაგი">
+            <Select
+              value={form.salesLocation}
+              onChange={(e) => setForm({ ...form, salesLocation: e.target.value as StockLocation })}
+            >
+              <option value="UPPER_FLOOR">{LOCATION_LABELS.UPPER_FLOOR}</option>
+              <option value="LOWER_FLOOR">{LOCATION_LABELS.LOWER_FLOOR}</option>
+              <option value="FRIDGE">{LOCATION_LABELS.FRIDGE}</option>
+              <option value="WAREHOUSE">{LOCATION_LABELS.WAREHOUSE}</option>
             </Select>
           </Field>
           <Field label="ერთეული" required>
@@ -303,8 +324,25 @@ export const CatalogView: React.FC = () => {
               <Input value={weightText} onChange={(e) => setWeightText(e.target.value)} inputMode="numeric" />
             </Field>
           )}
-          <Field label="ფერი (POS-ისთვის)">
+          <Field label="ფერი (თუ სურათი არ არის)">
             <Input type="color" value={form.color ?? '#f59e0b'} onChange={(e) => setForm({ ...form, color: e.target.value })} />
+          </Field>
+          <Field
+            label="სურათის ბმული (URL)"
+            className="md:col-span-2"
+            hint="ჩასვით ფოტოს პირდაპირი ბმული — Google-ში სურათზე მარჯვენა ღილაკი → Copy image address"
+          >
+            <div className="flex gap-3 items-start">
+              <Input value={imageUrl} onChange={(e) => setImageUrl(e.target.value)} placeholder="https://…" />
+              {imageUrl.trim() && (
+                <img
+                  src={imageUrl}
+                  alt=""
+                  className="w-16 h-16 rounded-xl object-cover border border-slate-200 flex-shrink-0"
+                  onError={(e) => ((e.target as HTMLImageElement).style.opacity = '0.2')}
+                />
+              )}
+            </div>
           </Field>
           <div className="md:col-span-2">
             <Checkbox

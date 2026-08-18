@@ -191,7 +191,7 @@ export const Dashboard: React.FC<Props> = ({ onNavigate }) => {
             icon={TrendingUp}
             tone="green"
           />
-          <StatCard label="ცვლა" value={myShift ? 'ღიაა' : 'დახურულია'} icon={Receipt} tone={myShift ? 'green' : 'red'} onClick={() => onNavigate('shift')} />
+          <StatCard label="ცვლა" value={myShift ? 'ღიაა' : 'დახურულია'} icon={Receipt} tone={myShift ? 'green' : 'red'} onClick={() => onNavigate('cash')} />
           <StatCard label="საწყისი ნაღდი" value={formatMoney(myShift?.openingCashTetri ?? 0)} icon={Wallet} />
         </div>
 
@@ -266,7 +266,7 @@ export const Dashboard: React.FC<Props> = ({ onNavigate }) => {
             value={String(lowStock.length)}
             icon={AlertTriangle}
             tone={lowStock.length ? 'red' : 'slate'}
-            onClick={() => onNavigate('stock_warehouse')}
+            onClick={() => onNavigate('stock')}
           />
         </div>
       )}

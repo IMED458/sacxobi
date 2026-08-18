@@ -6,7 +6,7 @@ import { useAuth } from '../context/AuthContext';
 import { useData } from '../context/DataContext';
 import { addDays, formatDateTime, todayBusinessDate } from '../lib/dates';
 import { formatMoney, formatQty, safeDiv } from '../lib/money';
-import { FLOOR_LABELS, LOCATION_LABELS } from '../lib/permissions';
+import { LOCATION_LABELS } from '../lib/permissions';
 import { fetchMovementsRange } from '../services/reports';
 import { createStocktake, type StocktakeLineInput } from '../services/stocktake';
 import type { MovementType, StockLocation, StockMovement } from '../types';
@@ -24,96 +24,84 @@ export const MOVEMENT_LABELS: Record<MovementType, string> = {
   INITIAL_STOCK: 'საწყისი ნაშთი'
 };
 
-/* ------------------------- მზა პროდუქტის მარაგი ------------------------ */
+/* --------------------------- ერთიანი მარაგი ---------------------------- */
 
-export const FinishedStockView: React.FC = () => {
-  const { products, stockLevels } = useData();
+const LOCATIONS: StockLocation[] = ['WAREHOUSE', 'FRIDGE', 'LOWER_FLOOR', 'UPPER_FLOOR'];
+
+interface StockRow {
+  key: string;
+  itemType: 'MATERIAL' | 'PRODUCT';
+  itemId: string;
+  name: string;
+  code: string;
+  unitSymbol: string;
+  imageUrl?: string;
+  quantity: number;
+  valueTetri: number;
+  minStock: number;
+  sellingPriceTetri?: number;
+}
+
+/**
+ * ერთი ადგილის სრული ნაშთი — ნედლეულიც და მზა/გასაყიდი პროდუქტიც.
+ * (ადრე მაცივარში მხოლოდ ნედლეული ჩანდა და შესყიდული პროდუქტი „იკარგებოდა".)
+ */
+export const StockByLocationView: React.FC<{ location: StockLocation }> = ({ location }) => {
+  const { materials, products, stockLevels } = useData();
   const { can } = useAuth();
+  const [search, setSearch] = useState('');
   const showValue = can('inventory.view');
 
-  const rows = products
-    .filter((p) => p.active)
-    .map((p) => {
-      const lower = stockLevels.find((l) => l.id === `PRODUCT__${p.id}__LOWER_FLOOR`);
-      const upper = stockLevels.find((l) => l.id === `PRODUCT__${p.id}__UPPER_FLOOR`);
-      return {
-        product: p,
-        lowerQty: lower?.quantity ?? 0,
-        upperQty: upper?.quantity ?? 0,
-        valueTetri: (lower?.valueTetri ?? 0) + (upper?.valueTetri ?? 0)
-      };
-    });
+  const rows: StockRow[] = useMemo(() => {
+    const list: StockRow[] = [];
 
-  const totalValue = rows.reduce((s, r) => s + r.valueTetri, 0);
+    materials
+      .filter((m) => m.active)
+      .forEach((m) => {
+        const level = stockLevels.find((l) => l.id === `MATERIAL__${m.id}__${location}`);
+        const quantity = level?.quantity ?? 0;
+        if (quantity === 0 && m.defaultStorageLocation !== location) return;
+        list.push({
+          key: `M-${m.id}`,
+          itemType: 'MATERIAL',
+          itemId: m.id,
+          name: m.name,
+          code: m.code,
+          unitSymbol: m.unitSymbol,
+          imageUrl: m.imageUrl,
+          quantity,
+          valueTetri: level?.valueTetri ?? 0,
+          minStock: m.minStock
+        });
+      });
 
-  return (
-    <Card>
-      <CardHeader
-        title="მზა პროდუქტის მარაგი"
-        subtitle="ორივე სართულის ნაშთი"
-        icon={Package}
-        actions={showValue && <Badge tone="amber">მარაგის ღირებულება: {formatMoney(totalValue)}</Badge>}
-      />
-      {rows.length === 0 ? (
-        <EmptyState icon={Package} title="პროდუქტები ვერ მოიძებნა" />
-      ) : (
-        <Table
-          head={
-            <tr>
-              <Th>პროდუქტი</Th>
-              <Th>კოდი</Th>
-              <Th>ტიპი</Th>
-              <Th className="text-right">{FLOOR_LABELS.LOWER_FLOOR}</Th>
-              <Th className="text-right">{FLOOR_LABELS.UPPER_FLOOR}</Th>
-              <Th className="text-right">სულ</Th>
-              <Th className="text-right">გასაყიდი ფასი</Th>
-              {showValue && <Th className="text-right">ღირებულება</Th>}
-            </tr>
-          }
-        >
-          {rows.map((r) => (
-            <tr key={r.product.id} className="hover:bg-slate-50">
-              <Td className="font-semibold text-slate-800">{r.product.name}</Td>
-              <Td className="text-xs text-slate-500">{r.product.code}</Td>
-              <Td>
-                <Badge tone={r.product.kind === 'PRODUCED' ? 'amber' : 'blue'}>
-                  {r.product.kind === 'PRODUCED' ? 'ჩვენი წარმოება' : 'შესყიდული'}
-                </Badge>
-              </Td>
-              <Td className="text-right">{formatQty(r.lowerQty)}</Td>
-              <Td className="text-right font-bold">{formatQty(r.upperQty)}</Td>
-              <Td className="text-right">{formatQty(r.lowerQty + r.upperQty)}</Td>
-              <Td className="text-right">{formatMoney(r.product.sellingPriceTetri)}</Td>
-              {showValue && <Td className="text-right text-slate-500">{formatMoney(r.valueTetri)}</Td>}
-            </tr>
-          ))}
-        </Table>
-      )}
-    </Card>
-  );
-};
+    products
+      .filter((p) => p.active)
+      .forEach((p) => {
+        const level = stockLevels.find((l) => l.id === `PRODUCT__${p.id}__${location}`);
+        const quantity = level?.quantity ?? 0;
+        const belongsHere = p.salesLocation === location || p.productionFloor === location;
+        if (quantity === 0 && !belongsHere) return;
+        list.push({
+          key: `P-${p.id}`,
+          itemType: 'PRODUCT',
+          itemId: p.id,
+          name: p.name,
+          code: p.code,
+          unitSymbol: p.unitSymbol,
+          imageUrl: p.imageUrl,
+          quantity,
+          valueTetri: level?.valueTetri ?? 0,
+          minStock: 0,
+          sellingPriceTetri: p.sellingPriceTetri
+        });
+      });
 
-/* --------------------------- ნედლეულის მარაგი -------------------------- */
-
-export const MaterialStockView: React.FC<{ location: 'WAREHOUSE' | 'FRIDGE' }> = ({ location }) => {
-  const { materials, stockLevels } = useData();
-  const [search, setSearch] = useState('');
-
-  const rows = materials
-    .filter((m) => m.active && (!search.trim() || m.name.toLowerCase().includes(search.trim().toLowerCase())))
-    .map((m) => {
-      const level = stockLevels.find((l) => l.id === `MATERIAL__${m.id}__${location}`);
-      const quantity = level?.quantity ?? 0;
-      const valueTetri = level?.valueTetri ?? 0;
-      return {
-        material: m,
-        quantity,
-        valueTetri,
-        unitCostTetri: Math.round(safeDiv(valueTetri, quantity || 1)),
-        low: m.minStock > 0 && quantity <= m.minStock
-      };
-    })
-    .filter((r) => r.quantity !== 0 || r.material.defaultStorageLocation === location);
+    const q = search.trim().toLowerCase();
+    return list
+      .filter((r) => !q || r.name.toLowerCase().includes(q) || r.code.toLowerCase().includes(q))
+      .sort((a, b) => a.name.localeCompare(b.name, 'ka'));
+  }, [materials, products, stockLevels, location, search]);
 
   const totalValue = rows.reduce((s, r) => s + r.valueTetri, 0);
 
@@ -121,44 +109,166 @@ export const MaterialStockView: React.FC<{ location: 'WAREHOUSE' | 'FRIDGE' }> =
     <Card>
       <CardHeader
         title={LOCATION_LABELS[location]}
-        subtitle="ნედლეულის მიმდინარე ნაშთი და ღირებულება"
-        icon={location === 'FRIDGE' ? Snowflake : Warehouse}
+        subtitle="ამ ადგილას არსებული ყველა ნივთი — ნედლეულიც და გასაყიდი პროდუქტიც"
+        icon={location === 'FRIDGE' ? Snowflake : location === 'WAREHOUSE' ? Warehouse : Package}
         actions={
           <>
             <Input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="ძებნა…" className="w-48" />
-            <Badge tone="amber">ღირებულება: {formatMoney(totalValue)}</Badge>
+            {showValue && <Badge tone="amber">ღირებულება: {formatMoney(totalValue)}</Badge>}
           </>
         }
       />
       {rows.length === 0 ? (
-        <EmptyState icon={Warehouse} title="მარაგი ცარიელია" description="დაამატეთ ნედლეული შესყიდვის დოკუმენტით" />
+        <EmptyState
+          icon={Warehouse}
+          title="აქ ჯერ არაფერია"
+          description="მარაგი ჩნდება შესყიდვის, წარმოების ან გადატანის შემდეგ"
+        />
       ) : (
         <Table
           head={
             <tr>
               <Th>დასახელება</Th>
-              <Th>კოდი</Th>
+              <Th>ტიპი</Th>
               <Th className="text-right">ნაშთი</Th>
               <Th>ერთეული</Th>
-              <Th className="text-right">საშ. ფასი</Th>
-              <Th className="text-right">ღირებულება</Th>
-              <Th className="text-right">მინ. ნაშთი</Th>
+              {showValue && <Th className="text-right">საშ. ფასი</Th>}
+              {showValue && <Th className="text-right">ღირებულება</Th>}
+              <Th className="text-right">გასაყიდი ფასი</Th>
               <Th />
             </tr>
           }
         >
-          {rows.map((r) => (
-            <tr key={r.material.id} className={`hover:bg-slate-50 ${r.low ? 'bg-red-50/40' : ''}`}>
-              <Td className="font-semibold text-slate-800">{r.material.name}</Td>
-              <Td className="text-xs text-slate-500">{r.material.code}</Td>
-              <Td className="text-right font-bold">{formatQty(r.quantity)}</Td>
-              <Td className="text-xs">{r.material.unitSymbol}</Td>
-              <Td className="text-right">{formatMoney(r.unitCostTetri)}</Td>
-              <Td className="text-right">{formatMoney(r.valueTetri)}</Td>
-              <Td className="text-right text-slate-500">{formatQty(r.material.minStock)}</Td>
-              <Td>{r.low && <Badge tone="red">დაბალი ნაშთი</Badge>}</Td>
+          {rows.map((r) => {
+            const low = r.minStock > 0 && r.quantity <= r.minStock;
+            return (
+              <tr key={r.key} className={`hover:bg-slate-50 ${low ? 'bg-red-50/40' : ''}`}>
+                <Td className="font-semibold text-slate-800">
+                  <span className="flex items-center gap-2.5">
+                    {r.imageUrl ? (
+                      <img src={r.imageUrl} alt="" className="w-8 h-8 rounded-lg object-cover border border-slate-200" />
+                    ) : null}
+                    <span>
+                      {r.name}
+                      <span className="block text-[11px] text-slate-400">{r.code}</span>
+                    </span>
+                  </span>
+                </Td>
+                <Td>
+                  <Badge tone={r.itemType === 'MATERIAL' ? 'slate' : 'blue'}>
+                    {r.itemType === 'MATERIAL' ? 'ნედლეული' : 'პროდუქტი'}
+                  </Badge>
+                </Td>
+                <Td className="text-right font-bold">{formatQty(r.quantity)}</Td>
+                <Td className="text-xs">{r.unitSymbol}</Td>
+                {showValue && (
+                  <Td className="text-right">{formatMoney(Math.round(safeDiv(r.valueTetri, r.quantity || 1)))}</Td>
+                )}
+                {showValue && <Td className="text-right">{formatMoney(r.valueTetri)}</Td>}
+                <Td className="text-right">{r.sellingPriceTetri != null ? formatMoney(r.sellingPriceTetri) : '—'}</Td>
+                <Td>{low && <Badge tone="red">დაბალი ნაშთი</Badge>}</Td>
+              </tr>
+            );
+          })}
+        </Table>
+      )}
+    </Card>
+  );
+};
+
+/** ყველა ადგილის მოკლე მიმოხილვა — რა სად დევს. */
+export const StockOverviewView: React.FC = () => {
+  const { stockLevels, products, materials } = useData();
+  const { can } = useAuth();
+  const showValue = can('inventory.view');
+
+  const rows = useMemo(() => {
+    const byItem = new Map<
+      string,
+      { name: string; unitSymbol: string; itemType: 'MATERIAL' | 'PRODUCT'; imageUrl?: string; per: Record<string, number>; valueTetri: number }
+    >();
+    stockLevels
+      .filter((l) => l.quantity !== 0)
+      .forEach((l) => {
+        const key = `${l.itemType}-${l.itemId}`;
+        const source =
+          l.itemType === 'MATERIAL' ? materials.find((m) => m.id === l.itemId) : products.find((p) => p.id === l.itemId);
+        const cur =
+          byItem.get(key) ??
+          {
+            name: l.itemName,
+            unitSymbol: (source as { unitSymbol?: string } | undefined)?.unitSymbol ?? '',
+            itemType: l.itemType,
+            imageUrl: (source as { imageUrl?: string } | undefined)?.imageUrl,
+            per: {} as Record<string, number>,
+            valueTetri: 0
+          };
+        cur.per[l.location] = (cur.per[l.location] ?? 0) + l.quantity;
+        cur.valueTetri += l.valueTetri;
+        byItem.set(key, cur);
+      });
+    return [...byItem.values()].sort((a, b) => a.name.localeCompare(b.name, 'ka'));
+  }, [stockLevels, products, materials]);
+
+  return (
+    <Card>
+      <CardHeader
+        title="მარაგის მიმოხილვა"
+        subtitle="რა სად დევს — ყველა ადგილი ერთ ცხრილში"
+        icon={Package}
+        actions={
+          showValue && (
+            <Badge tone="amber">სულ ღირებულება: {formatMoney(rows.reduce((s, r) => s + r.valueTetri, 0))}</Badge>
+          )
+        }
+      />
+      {rows.length === 0 ? (
+        <EmptyState icon={Package} title="მარაგი ჯერ ცარიელია" />
+      ) : (
+        <Table
+          head={
+            <tr>
+              <Th>დასახელება</Th>
+              <Th>ტიპი</Th>
+              {LOCATIONS.map((l) => (
+                <Th key={l} className="text-right">
+                  {LOCATION_LABELS[l]}
+                </Th>
+              ))}
+              <Th className="text-right">სულ</Th>
+              {showValue && <Th className="text-right">ღირებულება</Th>}
             </tr>
-          ))}
+          }
+        >
+          {rows.map((r) => {
+            const total = LOCATIONS.reduce((s, l) => s + (r.per[l] ?? 0), 0);
+            return (
+              <tr key={r.name} className="hover:bg-slate-50">
+                <Td className="font-semibold text-slate-800">
+                  <span className="flex items-center gap-2.5">
+                    {r.imageUrl ? (
+                      <img src={r.imageUrl} alt="" className="w-8 h-8 rounded-lg object-cover border border-slate-200" />
+                    ) : null}
+                    {r.name}
+                  </span>
+                </Td>
+                <Td>
+                  <Badge tone={r.itemType === 'MATERIAL' ? 'slate' : 'blue'}>
+                    {r.itemType === 'MATERIAL' ? 'ნედლეული' : 'პროდუქტი'}
+                  </Badge>
+                </Td>
+                {LOCATIONS.map((l) => (
+                  <Td key={l} className="text-right">
+                    {r.per[l] ? formatQty(r.per[l]) : <span className="text-slate-300">—</span>}
+                  </Td>
+                ))}
+                <Td className="text-right font-bold">
+                  {formatQty(total)} {r.unitSymbol}
+                </Td>
+                {showValue && <Td className="text-right">{formatMoney(r.valueTetri)}</Td>}
+              </tr>
+            );
+          })}
         </Table>
       )}
     </Card>

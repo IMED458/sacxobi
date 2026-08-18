@@ -288,3 +288,38 @@ export const Td: React.FC<{
 export const SectionTitle: React.FC<{ children: React.ReactNode; className?: string }> = ({ children, className = '' }) => (
   <h3 className={`text-xs font-bold uppercase tracking-wide text-slate-400 ${className}`}>{children}</h3>
 );
+
+/* -------------------------------- ტაბები ------------------------------ */
+
+export interface TabDef {
+  id: string;
+  label: string;
+  icon?: React.ElementType;
+  hidden?: boolean;
+}
+
+export const Tabs: React.FC<{ tabs: TabDef[]; active: string; onChange: (id: string) => void }> = ({
+  tabs,
+  active,
+  onChange
+}) => (
+  <div className="flex items-center gap-1.5 flex-wrap mb-4">
+    {tabs
+      .filter((t) => !t.hidden)
+      .map((t) => {
+        const Icon = t.icon;
+        return (
+          <button
+            key={t.id}
+            onClick={() => onChange(t.id)}
+            className={`px-4 py-2 rounded-xl text-xs font-bold flex items-center gap-2 cursor-pointer transition ${
+              active === t.id ? 'bg-slate-900 text-white shadow-sm' : 'bg-white border border-slate-200 text-slate-600 hover:bg-slate-50'
+            }`}
+          >
+            {Icon && <Icon className="w-3.5 h-3.5" />}
+            {t.label}
+          </button>
+        );
+      })}
+  </div>
+);

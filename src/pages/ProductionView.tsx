@@ -11,6 +11,8 @@ import { downloadBlob, generateProductionSheetPdf } from '../lib/pdf';
 import { createProductionBatch, resolveWeightGrams, scaleRecipe, type ConsumptionInput } from '../services/production';
 import { fetchProductionRange } from '../services/reports';
 import type { Floor, ProductionBatch, StorageLocation } from '../types';
+import { DeleteRecordButton } from '../components/DeleteRecordButton';
+import { COL } from '../services/db';
 
 export const ProductionView: React.FC = () => {
   const { user, can } = useAuth();
@@ -195,13 +197,23 @@ export const ProductionView: React.FC = () => {
                 {showCost && <Td className="text-right">{formatMoney(b.totalMaterialCostTetri)}</Td>}
                 {showCost && <Td className="text-right font-semibold">{formatMoney(b.unitProductionCostTetri)}</Td>}
                 <Td>
-                  <button
-                    onClick={() => void exportSheet(b)}
-                    className="p-1.5 rounded-lg text-slate-400 hover:text-amber-700 hover:bg-amber-50 cursor-pointer"
-                    title="PDF"
-                  >
-                    <FileDown className="w-4 h-4" />
-                  </button>
+                  <div className="flex justify-end gap-1">
+                    <button
+                      onClick={() => void exportSheet(b)}
+                      className="p-1.5 rounded-lg text-slate-400 hover:text-amber-700 hover:bg-amber-50 cursor-pointer"
+                      title="PDF"
+                    >
+                      <FileDown className="w-4 h-4" />
+                    </button>
+                    <DeleteRecordButton
+                      collection={COL.productionBatches}
+                      id={b.id}
+                      entityType="production"
+                      label={`წარმოება ${b.batchNo}`}
+                      warning="ჩანაწერი წაიშლება, მაგრამ დახარჯული ნედლეული და დამატებული პროდუქცია მარაგში ავტომატურად არ კორექტირდება."
+                      onDeleted={load}
+                    />
+                  </div>
                 </Td>
               </tr>
             ))}

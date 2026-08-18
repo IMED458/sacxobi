@@ -11,6 +11,8 @@ import { addCashMovement, closeShift, computeShiftTotals, fetchShiftsForDate, op
 import { closeBusinessDay, fetchBusinessDay, fetchOpenShifts, reopenBusinessDay } from '../services/businessDays';
 import { computeDaySummary, fetchExpensesRange } from '../services/reports';
 import type { BusinessDay, CashierShift, DaySummary, Expense, PaymentMethod } from '../types';
+import { DeleteRecordButton } from '../components/DeleteRecordButton';
+import { COL } from '../services/db';
 
 /* ------------------------------- ხარჯები ------------------------------ */
 
@@ -112,6 +114,7 @@ export const ExpensesView: React.FC = () => {
               <Th>გადახდა</Th>
               <Th className="text-right">თანხა</Th>
               <Th>შემქმნელი</Th>
+              <Th />
             </tr>
           }
         >
@@ -125,6 +128,17 @@ export const ExpensesView: React.FC = () => {
               <Td className="text-xs">{e.paymentMethod === 'CASH' ? 'ნაღდი' : e.paymentMethod === 'CARD' ? 'ბარათი' : 'გადარიცხვა'}</Td>
               <Td className="text-right font-bold text-red-600">{formatMoney(e.amountTetri)}</Td>
               <Td className="text-xs">{e.createdByName}</Td>
+              <Td>
+                <div className="flex justify-end">
+                  <DeleteRecordButton
+                    collection={COL.expenses}
+                    id={e.id}
+                    entityType="expense"
+                    label={`ხარჯი ${e.documentNo}`}
+                    onDeleted={load}
+                  />
+                </div>
+              </Td>
             </tr>
           ))}
         </Table>

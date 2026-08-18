@@ -1,10 +1,14 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
   Banknote,
+  ClipboardList,
   CreditCard,
+  ImageIcon,
   Landmark,
+  LayoutGrid,
+  List as ListIcon,
   Minus,
-  Package,
+  PauseCircle,
   Plus,
   Printer,
   Search,
@@ -14,15 +18,16 @@ import {
   Wallet,
   X
 } from 'lucide-react';
-import { Button, Card, Field, Input, Modal, Select } from '../components/ui';
+import { Badge, Button, Card, Field, Input, Modal, Textarea } from '../components/ui';
 import { useToast } from '../components/ui/Toast';
 import { useAuth } from '../context/AuthContext';
 import { useData } from '../context/DataContext';
 import { formatMoney, formatQty, toGel, toTetri } from '../lib/money';
 import { downloadBlob, generateReceiptPdf, generateWaybillPdf } from '../lib/pdf';
 import { logAudit } from '../services/audit';
-import { createSale, type CartLine } from '../services/sales';
-import type { FinishedProduct, PaymentMethod, Sale } from '../types';
+import { createSale, resolveSaleLocation, type CartLine } from '../services/sales';
+import { createOrder } from '../services/orders';
+import type { FinishedProduct, PaymentMethod, Sale, StockLocation } from '../types';
 
 const PAYMENTS: { id: PaymentMethod; label: string; icon: React.ElementType }[] = [
   { id: 'CASH', label: 'ნაღდი', icon: Banknote },
@@ -30,6 +35,15 @@ const PAYMENTS: { id: PaymentMethod; label: string; icon: React.ElementType }[] 
   { id: 'BANK_TRANSFER', label: 'გადარიცხვა', icon: Landmark },
   { id: 'DEBT', label: 'დავალიანება', icon: Wallet }
 ];
+
+const HOLD_KEY = 'sacxobi_pos_hold';
+
+interface HeldCart {
+  id: string;
+  at: string;
+  receivedByName: string;
+  lines: { productId: string; quantity: number; priceTetri: number }[];
+}
 
 interface Props {
   onNavigate: (page: string) => void;
@@ -43,15 +57,46 @@ export const POSView: React.FC<Props> = ({ onNavigate }) => {
   const [cart, setCart] = useState<CartLine[]>([]);
   const [search, setSearch] = useState('');
   const [categoryId, setCategoryId] = useState<string>('all');
+  const [view, setView] = useState<'grid' | 'list'>('grid');
   const [discountText, setDiscountText] = useState('0');
-  const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('CASH');
   const [receivedByName, setReceivedByName] = useState('');
-  const [receivedByPhone, setReceivedByPhone] = useState('');
-  const [comment, setComment] = useState('');
-  const [paidText, setPaidText] = useState('0');
   const [loading, setLoading] = useState(false);
   const [lastSale, setLastSale] = useState<Sale | null>(null);
   const [priceEdit, setPriceEdit] = useState<{ index: number; value: string } | null>(null);
+  const [held, setHeld] = useState<HeldCart[]>([]);
+  const [showHeld, setShowHeld] = useState(false);
+
+  // გადახდის ფანჯარა
+  const [payOpen, setPayOpen] = useState(false);
+  const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('CASH');
+  const [receivedByPhone, setReceivedByPhone] = useState('');
+  const [comment, setComment] = useState('');
+  const [paidText, setPaidText] = useState('0');
+
+  // შეკვეთის ფანჯარა
+  const [orderOpen, setOrderOpen] = useState(false);
+  const [orderDue, setOrderDue] = useState('');
+  const [orderPrepaid, setOrderPrepaid] = useState('0');
+  const [orderPhone, setOrderPhone] = useState('');
+  const [orderComment, setOrderComment] = useState('');
+
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem(HOLD_KEY);
+      if (raw) setHeld(JSON.parse(raw));
+    } catch {
+      /* ignore */
+    }
+  }, []);
+
+  const persistHeld = (next: HeldCart[]) => {
+    setHeld(next);
+    try {
+      localStorage.setItem(HOLD_KEY, JSON.stringify(next));
+    } catch {
+      /* ignore */
+    }
+  };
 
   const sellable = useMemo(
     () =>
@@ -66,7 +111,11 @@ export const POSView: React.FC<Props> = ({ onNavigate }) => {
     [products, categoryId, search]
   );
 
-  const availableOf = (p: FinishedProduct) => stockOf('PRODUCT', p.id, p.salesLocation)?.quantity ?? 0;
+  /** სად დევს რეალურად — თუ გასაყიდ ადგილას არაფერია, ვიღებთ იქიდან, სადაც მარაგია. */
+  const locationOf = (p: FinishedProduct): StockLocation =>
+    resolveSaleLocation(p, (loc) => stockOf('PRODUCT', p.id, loc)?.quantity ?? 0);
+
+  const availableOf = (p: FinishedProduct) => stockOf('PRODUCT', p.id, locationOf(p))?.quantity ?? 0;
 
   const subtotalTetri = cart.reduce((s, l) => s + Math.round(l.priceTetri * l.quantity), 0);
   const discountTetri = Math.max(0, toTetri(discountText || '0'));
@@ -81,7 +130,8 @@ export const POSView: React.FC<Props> = ({ onNavigate }) => {
         toast.warning(`${product.name}: მარაგში დარჩა ${formatQty(available)} ${product.unitSymbol}`);
         return prev;
       }
-      if (idx === -1) return [...prev, { product, quantity: 1, priceTetri: product.sellingPriceTetri }];
+      if (idx === -1)
+        return [...prev, { product, quantity: 1, priceTetri: product.sellingPriceTetri, location: locationOf(product) }];
       const next = [...prev];
       next[idx] = { ...next[idx], quantity: next[idx].quantity + 1 };
       return next;
@@ -113,6 +163,31 @@ export const POSView: React.FC<Props> = ({ onNavigate }) => {
     setPaymentMethod('CASH');
   };
 
+  const holdCart = () => {
+    if (!cart.length) return;
+    const entry: HeldCart = {
+      id: Math.random().toString(36).slice(2, 8),
+      at: new Date().toISOString(),
+      receivedByName,
+      lines: cart.map((l) => ({ productId: l.product.id, quantity: l.quantity, priceTetri: l.priceTetri }))
+    };
+    persistHeld([entry, ...held]);
+    resetCart();
+    toast.info('კალათა შეჩერდა — შეგიძლიათ ნებისმიერ დროს დააბრუნოთ');
+  };
+
+  const restoreHeld = (entry: HeldCart) => {
+    const lines: CartLine[] = [];
+    entry.lines.forEach((l) => {
+      const product = products.find((p) => p.id === l.productId);
+      if (product) lines.push({ product, quantity: l.quantity, priceTetri: l.priceTetri, location: locationOf(product) });
+    });
+    setCart(lines);
+    setReceivedByName(entry.receivedByName);
+    persistHeld(held.filter((h) => h.id !== entry.id));
+    setShowHeld(false);
+  };
+
   const completeSale = async () => {
     if (!user) return;
     setLoading(true);
@@ -129,7 +204,41 @@ export const POSView: React.FC<Props> = ({ onNavigate }) => {
       });
       setLastSale(sale);
       resetCart();
+      setPayOpen(false);
       toast.success(`გაყიდვა შესრულდა — ${sale.saleNo}`);
+    } catch (err) {
+      toast.error(err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const submitOrder = async () => {
+    if (!user) return;
+    setLoading(true);
+    try {
+      const order = await createOrder(user, {
+        customerName: receivedByName,
+        customerPhone: orderPhone || undefined,
+        dueDate: orderDue || undefined,
+        lines: cart.map((l) => ({
+          productId: l.product.id,
+          productName: l.product.name,
+          unitSymbol: l.product.unitSymbol,
+          quantity: l.quantity,
+          priceTetri: l.priceTetri
+        })),
+        prepaidTetri: toTetri(orderPrepaid || '0'),
+        paymentMethod: 'CASH',
+        comment: orderComment || undefined
+      });
+      toast.success(`შეკვეთა შეიქმნა — ${order.orderNo}`);
+      resetCart();
+      setOrderOpen(false);
+      setOrderDue('');
+      setOrderPrepaid('0');
+      setOrderPhone('');
+      setOrderComment('');
     } catch (err) {
       toast.error(err);
     } finally {
@@ -165,11 +274,31 @@ export const POSView: React.FC<Props> = ({ onNavigate }) => {
   }
 
   return (
-    <div className="flex flex-col lg:flex-row gap-4 h-[calc(100vh-6.5rem)]">
-      {/* ------------------------- კალათა ------------------------- */}
-      <div className="w-full lg:w-[38%] lg:min-w-[380px] bg-white rounded-2xl border border-slate-200 shadow-sm flex flex-col overflow-hidden">
-        <div className="p-3 border-b border-slate-200 space-y-2">
+    <div className="flex flex-col gap-3 h-[calc(100vh-6.5rem)]">
+      {/* ბოლო გაყიდვა — ბეჭდვა მხოლოდ სურვილისამებრ, ავტომატურად არაფერი იხსნება */}
+      {lastSale && (
+        <div className="bg-emerald-50 border border-emerald-200 rounded-2xl px-4 py-2.5 flex items-center justify-between gap-3 flex-wrap">
+          <span className="text-xs font-bold text-emerald-800">
+            ბოლო გაყიდვა: {lastSale.saleNo} · {formatMoney(lastSale.grandTotalTetri)} · ჩაიბარა {lastSale.receivedByName}
+          </span>
           <div className="flex items-center gap-2">
+            <Button size="sm" variant="secondary" icon={Printer} onClick={() => void printPdf(lastSale, 'receipt')}>
+              ქვითარი
+            </Button>
+            <Button size="sm" variant="secondary" icon={Printer} onClick={() => void printPdf(lastSale, 'waybill')}>
+              ზედნადები
+            </Button>
+            <button onClick={() => setLastSale(null)} className="p-1.5 text-emerald-700/60 hover:text-emerald-900 cursor-pointer">
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+        </div>
+      )}
+
+      <div className="flex flex-col lg:flex-row gap-3 flex-1 min-h-0">
+        {/* ============================ კალათა ============================ */}
+        <div className="w-full lg:w-[38%] lg:min-w-[360px] bg-white rounded-2xl border border-slate-200 shadow-sm flex flex-col overflow-hidden">
+          <div className="p-3 border-b border-slate-200 flex items-center gap-2">
             <div className="w-9 h-9 rounded-xl bg-amber-100 text-amber-700 flex items-center justify-center flex-shrink-0">
               <UserCheck className="w-4 h-4" />
             </div>
@@ -180,79 +309,280 @@ export const POSView: React.FC<Props> = ({ onNavigate }) => {
               className="flex-1"
             />
           </div>
-          <div className="grid grid-cols-2 gap-2">
-            <Input value={receivedByPhone} onChange={(e) => setReceivedByPhone(e.target.value)} placeholder="ტელეფონი" />
-            <Input value={comment} onChange={(e) => setComment(e.target.value)} placeholder="კომენტარი" />
+
+          <div className="flex-1 overflow-y-auto">
+            {cart.length === 0 ? (
+              <div className="h-full flex flex-col items-center justify-center text-slate-300 gap-2 p-6">
+                <ShoppingBag className="w-12 h-12" />
+                <p className="text-xs font-semibold text-slate-400">კალათა ცარიელია</p>
+                <p className="text-[11px] text-slate-400">აირჩიეთ პროდუქტი მარჯვენა მხრიდან</p>
+              </div>
+            ) : (
+              <div className="divide-y divide-slate-100">
+                {cart.map((line, idx) => (
+                  <div key={line.product.id} className="p-3 flex items-center gap-2">
+                    {line.product.imageUrl ? (
+                      <img src={line.product.imageUrl} alt="" className="w-10 h-10 rounded-lg object-cover border border-slate-200 flex-shrink-0" />
+                    ) : (
+                      <span
+                        className="w-10 h-10 rounded-lg flex-shrink-0 flex items-center justify-center text-[10px] font-bold text-white"
+                        style={{ background: line.product.color || '#f59e0b' }}
+                      >
+                        {line.product.name.slice(0, 2)}
+                      </span>
+                    )}
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-bold text-slate-800 truncate">{line.product.name}</p>
+                      <button
+                        onClick={() => setPriceEdit({ index: idx, value: toGel(line.priceTetri).toFixed(2) })}
+                        className="text-[11px] text-slate-500 hover:text-amber-700 cursor-pointer"
+                        title="ფასის შეცვლა ამ გაყიდვისთვის"
+                      >
+                        {formatMoney(line.priceTetri)} / {line.product.unitSymbol}
+                        {line.priceTetri !== line.product.sellingPriceTetri && ' ✎'}
+                      </button>
+                    </div>
+                    <div className="flex items-center gap-1">
+                      <button
+                        onClick={() => setQuantity(idx, Math.round((line.quantity - 1) * 1000) / 1000)}
+                        className="w-7 h-7 rounded-lg bg-slate-100 hover:bg-slate-200 flex items-center justify-center cursor-pointer"
+                      >
+                        <Minus className="w-3.5 h-3.5" />
+                      </button>
+                      <input
+                        value={line.quantity}
+                        onChange={(e) => setQuantity(idx, Number(e.target.value) || 0)}
+                        type="number"
+                        step="0.001"
+                        className="w-14 text-center text-sm font-bold border border-slate-200 rounded-lg py-1 outline-none focus:ring-2 focus:ring-amber-500"
+                      />
+                      <button
+                        onClick={() => setQuantity(idx, Math.round((line.quantity + 1) * 1000) / 1000)}
+                        className="w-7 h-7 rounded-lg bg-slate-100 hover:bg-slate-200 flex items-center justify-center cursor-pointer"
+                      >
+                        <Plus className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                    <div className="w-20 text-right text-sm font-bold text-slate-900">
+                      {formatMoney(Math.round(line.priceTetri * line.quantity), false)}
+                    </div>
+                    <button
+                      onClick={() => setCart((prev) => prev.filter((_, i) => i !== idx))}
+                      className="p-1.5 text-slate-300 hover:text-red-500 cursor-pointer"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
+          <div className="border-t border-slate-200 p-3 space-y-2.5 bg-slate-50">
+            {settings.requireShiftForSale && !myShift && (
+              <button
+                onClick={() => onNavigate('cash')}
+                className="w-full bg-amber-100 border border-amber-300 text-amber-800 rounded-xl px-3 py-2 text-xs font-bold cursor-pointer"
+              >
+                ⚠️ ცვლა არ არის გახსნილი — გასაყიდად ჯერ გახსენით ცვლა
+              </button>
+            )}
+
+            <div className="grid grid-cols-2 gap-2">
+              <Button variant="secondary" icon={PauseCircle} onClick={holdCart} disabled={!cart.length}>
+                შეჩერება{held.length > 0 ? ` (${held.length})` : ''}
+              </Button>
+              <Button
+                variant="secondary"
+                icon={ClipboardList}
+                onClick={() => (cart.length ? setOrderOpen(true) : setShowHeld(true))}
+              >
+                {cart.length ? 'შეკვეთა' : 'შეჩერებულები'}
+              </Button>
+            </div>
+
+            <div className="flex items-center justify-between gap-2">
+              <span className="text-xs font-bold text-slate-600">ფასდაკლება (₾):</span>
+              <Input
+                value={discountText}
+                onChange={(e) => setDiscountText(e.target.value)}
+                inputMode="decimal"
+                className="w-32 text-right"
+              />
+            </div>
+
+            <div className="bg-slate-900 text-white rounded-xl px-4 py-3 flex items-center justify-between">
+              <span className="text-sm font-bold">სულ გადასახდელი:</span>
+              <span className="text-xl font-bold text-emerald-400">{formatMoney(grandTotalTetri)}</span>
+            </div>
+
+            <Button
+              onClick={() => setPayOpen(true)}
+              disabled={!cart.length || (settings.requireShiftForSale && !myShift)}
+              className="w-full"
+              size="lg"
+            >
+              გადახდა / გაყიდვის დასრულება
+            </Button>
           </div>
         </div>
 
-        <div className="flex-1 overflow-y-auto">
-          {cart.length === 0 ? (
-            <div className="h-full flex flex-col items-center justify-center text-slate-300 gap-2 p-6">
-              <ShoppingBag className="w-12 h-12" />
-              <p className="text-xs font-semibold text-slate-400">კალათა ცარიელია — აირჩიეთ პროდუქტი</p>
+        {/* ========================== პროდუქტები ========================== */}
+        <div className="flex-1 bg-white rounded-2xl border border-slate-200 shadow-sm flex flex-col overflow-hidden">
+          <div className="p-3 border-b border-slate-200 space-y-2.5">
+            <div className="relative">
+              <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+              <Input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="პროდუქტის ძებნა…" className="pl-9" />
             </div>
-          ) : (
-            <div className="divide-y divide-slate-100">
-              {cart.map((line, idx) => (
-                <div key={line.product.id} className="p-3 flex items-center gap-3">
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm font-bold text-slate-800 truncate">{line.product.name}</p>
+            <div className="flex items-center justify-between gap-2 flex-wrap">
+              <div className="flex items-center gap-1.5 flex-wrap">
+                <button
+                  onClick={() => setCategoryId('all')}
+                  className={`px-4 py-1.5 rounded-xl text-xs font-bold cursor-pointer transition ${
+                    categoryId === 'all' ? 'bg-slate-900 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                  }`}
+                >
+                  ყველა
+                </button>
+                {productCategories
+                  .filter((c) => c.active)
+                  .map((c) => (
                     <button
-                      onClick={() => setPriceEdit({ index: idx, value: toGel(line.priceTetri).toFixed(2) })}
-                      className="text-[11px] text-slate-500 hover:text-amber-700 cursor-pointer"
-                      title="ფასის შეცვლა ამ გაყიდვისთვის"
+                      key={c.id}
+                      onClick={() => setCategoryId(c.id)}
+                      className={`px-4 py-1.5 rounded-xl text-xs font-bold cursor-pointer transition ${
+                        categoryId === c.id ? 'bg-slate-900 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                      }`}
                     >
-                      {formatMoney(line.priceTetri)} / {line.product.unitSymbol}
-                      {line.priceTetri !== line.product.sellingPriceTetri && ' (შეცვლილი)'}
+                      {c.name}
                     </button>
-                  </div>
-                  <div className="flex items-center gap-1">
-                    <button
-                      onClick={() => setQuantity(idx, Math.round((line.quantity - 1) * 1000) / 1000)}
-                      className="w-7 h-7 rounded-lg bg-slate-100 hover:bg-slate-200 flex items-center justify-center cursor-pointer"
-                    >
-                      <Minus className="w-3.5 h-3.5" />
-                    </button>
-                    <input
-                      value={line.quantity}
-                      onChange={(e) => setQuantity(idx, Number(e.target.value) || 0)}
-                      type="number"
-                      step="0.001"
-                      className="w-14 text-center text-sm font-bold border border-slate-200 rounded-lg py-1 outline-none focus:ring-2 focus:ring-amber-500"
-                    />
-                    <button
-                      onClick={() => setQuantity(idx, Math.round((line.quantity + 1) * 1000) / 1000)}
-                      className="w-7 h-7 rounded-lg bg-slate-100 hover:bg-slate-200 flex items-center justify-center cursor-pointer"
-                    >
-                      <Plus className="w-3.5 h-3.5" />
-                    </button>
-                  </div>
-                  <div className="w-20 text-right text-sm font-bold text-slate-900">
-                    {formatMoney(Math.round(line.priceTetri * line.quantity), false)}
-                  </div>
-                  <button
-                    onClick={() => setCart((prev) => prev.filter((_, i) => i !== idx))}
-                    className="p-1.5 text-slate-300 hover:text-red-500 cursor-pointer"
-                  >
-                    <Trash2 className="w-4 h-4" />
-                  </button>
-                </div>
-              ))}
+                  ))}
+              </div>
+              <div className="flex items-center gap-1 bg-slate-100 rounded-xl p-1">
+                <button
+                  onClick={() => setView('grid')}
+                  className={`p-1.5 rounded-lg cursor-pointer ${view === 'grid' ? 'bg-white shadow-sm text-amber-700' : 'text-slate-400'}`}
+                >
+                  <LayoutGrid className="w-4 h-4" />
+                </button>
+                <button
+                  onClick={() => setView('list')}
+                  className={`p-1.5 rounded-lg cursor-pointer ${view === 'list' ? 'bg-white shadow-sm text-amber-700' : 'text-slate-400'}`}
+                >
+                  <ListIcon className="w-4 h-4" />
+                </button>
+              </div>
             </div>
-          )}
+          </div>
+
+          <div className="flex-1 overflow-y-auto p-3">
+            {sellable.length === 0 ? (
+              <div className="h-full flex flex-col items-center justify-center text-slate-300 gap-2">
+                <ImageIcon className="w-12 h-12" />
+                <p className="text-xs font-semibold text-slate-400">პროდუქტი ვერ მოიძებნა</p>
+              </div>
+            ) : view === 'grid' ? (
+              <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5 gap-3">
+                {sellable.map((p) => {
+                  const available = availableOf(p);
+                  const out = available <= 0;
+                  return (
+                    <button
+                      key={p.id}
+                      onClick={() => addToCart(p)}
+                      disabled={out && !settings.allowNegativeStock}
+                      className={`relative text-left rounded-2xl border overflow-hidden transition shadow-sm cursor-pointer disabled:cursor-not-allowed ${
+                        out ? 'bg-slate-50 border-slate-200 opacity-60' : 'bg-white border-slate-200 hover:border-amber-400 hover:shadow-md'
+                      }`}
+                    >
+                      <div className="relative h-28 bg-slate-50 flex items-center justify-center overflow-hidden">
+                        {p.imageUrl ? (
+                          <img src={p.imageUrl} alt={p.name} className="w-full h-full object-contain" loading="lazy" />
+                        ) : (
+                          <span
+                            className="w-14 h-14 rounded-2xl flex items-center justify-center text-lg font-bold text-white"
+                            style={{ background: p.color || '#f59e0b' }}
+                          >
+                            {p.name.slice(0, 2)}
+                          </span>
+                        )}
+                        <span className="absolute top-2 left-2 bg-white/95 border border-slate-200 rounded-lg px-2 py-0.5 text-xs font-bold text-slate-900">
+                          {formatMoney(p.sellingPriceTetri)}
+                        </span>
+                        <span
+                          className={`absolute top-2 right-2 rounded-lg px-2 py-0.5 text-[11px] font-bold ${
+                            out ? 'bg-red-100 text-red-700' : 'bg-emerald-100 text-emerald-700'
+                          }`}
+                        >
+                          {formatQty(available)}
+                        </span>
+                      </div>
+                      <div className="p-2.5">
+                        <p className="text-sm font-bold text-slate-800 leading-tight line-clamp-2">{p.name}</p>
+                        <p className="text-[11px] text-slate-400 mt-0.5 font-mono">{p.code}</p>
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
+            ) : (
+              <div className="divide-y divide-slate-100 border border-slate-200 rounded-2xl overflow-hidden">
+                {sellable.map((p) => {
+                  const available = availableOf(p);
+                  const out = available <= 0;
+                  return (
+                    <button
+                      key={p.id}
+                      onClick={() => addToCart(p)}
+                      disabled={out && !settings.allowNegativeStock}
+                      className={`w-full flex items-center gap-3 p-2.5 text-left hover:bg-amber-50/50 cursor-pointer disabled:cursor-not-allowed ${
+                        out ? 'opacity-60' : ''
+                      }`}
+                    >
+                      {p.imageUrl ? (
+                        <img src={p.imageUrl} alt="" className="w-11 h-11 rounded-lg object-cover border border-slate-200" />
+                      ) : (
+                        <span
+                          className="w-11 h-11 rounded-lg flex items-center justify-center text-xs font-bold text-white"
+                          style={{ background: p.color || '#f59e0b' }}
+                        >
+                          {p.name.slice(0, 2)}
+                        </span>
+                      )}
+                      <span className="flex-1 min-w-0">
+                        <span className="block text-sm font-bold text-slate-800 truncate">{p.name}</span>
+                        <span className="block text-[11px] text-slate-400 font-mono">{p.code}</span>
+                      </span>
+                      <Badge tone={out ? 'red' : 'green'}>{formatQty(available)}</Badge>
+                      <span className="w-24 text-right text-sm font-bold text-slate-900">{formatMoney(p.sellingPriceTetri)}</span>
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+          </div>
         </div>
+      </div>
 
-        <div className="border-t border-slate-200 p-3 space-y-3 bg-slate-50">
-          {settings.requireShiftForSale && !myShift && (
-            <button
-              onClick={() => onNavigate('shift')}
-              className="w-full bg-amber-100 border border-amber-300 text-amber-800 rounded-xl px-3 py-2 text-xs font-bold cursor-pointer"
-            >
-              ⚠️ ცვლა არ არის გახსნილი — გასაყიდად ჯერ გახსენით ცვლა
-            </button>
-          )}
-
+      {/* ------------------------- გადახდის ფანჯარა ------------------------- */}
+      <Modal
+        open={payOpen}
+        onClose={() => setPayOpen(false)}
+        title="გადახდა"
+        subtitle={`სულ გადასახდელი: ${formatMoney(grandTotalTetri)}`}
+        size="sm"
+        footer={
+          <>
+            <Button variant="secondary" onClick={() => setPayOpen(false)}>
+              დახურვა
+            </Button>
+            <Button onClick={() => void completeSale()} loading={loading}>
+              დადასტურება
+            </Button>
+          </>
+        }
+      >
+        <div className="space-y-4">
           <div className="grid grid-cols-4 gap-1.5">
             {PAYMENTS.map((p) => {
               const Icon = p.icon;
@@ -260,7 +590,7 @@ export const POSView: React.FC<Props> = ({ onNavigate }) => {
                 <button
                   key={p.id}
                   onClick={() => setPaymentMethod(p.id)}
-                  className={`py-2 rounded-xl text-[11px] font-bold flex flex-col items-center gap-1 border transition cursor-pointer ${
+                  className={`py-2.5 rounded-xl text-[11px] font-bold flex flex-col items-center gap-1 border transition cursor-pointer ${
                     paymentMethod === p.id
                       ? 'bg-amber-600 border-amber-600 text-white'
                       : 'bg-white border-slate-200 text-slate-600 hover:border-amber-300'
@@ -273,9 +603,12 @@ export const POSView: React.FC<Props> = ({ onNavigate }) => {
             })}
           </div>
 
-          <div className="grid grid-cols-2 gap-2">
-            <Field label="ფასდაკლება (₾)">
-              <Input value={discountText} onChange={(e) => setDiscountText(e.target.value)} inputMode="decimal" />
+          <Field label="ვინ ჩაიბარებს" required={!settings.allowAnonymousSale}>
+            <Input value={receivedByName} onChange={(e) => setReceivedByName(e.target.value)} />
+          </Field>
+          <div className="grid grid-cols-2 gap-3">
+            <Field label="ტელეფონი">
+              <Input value={receivedByPhone} onChange={(e) => setReceivedByPhone(e.target.value)} />
             </Field>
             {paymentMethod === 'DEBT' && (
               <Field label="გადახდილი (₾)">
@@ -283,102 +616,78 @@ export const POSView: React.FC<Props> = ({ onNavigate }) => {
               </Field>
             )}
           </div>
+          <Field label="კომენტარი">
+            <Textarea rows={2} value={comment} onChange={(e) => setComment(e.target.value)} />
+          </Field>
+        </div>
+      </Modal>
 
-          <div className="space-y-1 text-sm">
-            <div className="flex justify-between text-slate-500">
-              <span>ჯამი</span>
-              <span className="font-semibold">{formatMoney(subtotalTetri)}</span>
-            </div>
-            {discountTetri > 0 && (
-              <div className="flex justify-between text-red-600">
-                <span>ფასდაკლება</span>
-                <span className="font-semibold">− {formatMoney(discountTetri)}</span>
+      {/* --------------------------- ახალი შეკვეთა -------------------------- */}
+      <Modal
+        open={orderOpen}
+        onClose={() => setOrderOpen(false)}
+        title="კალათიდან შეკვეთის შექმნა"
+        subtitle={`ჯამი: ${formatMoney(subtotalTetri)} · მარაგი ჩამოიწერება მხოლოდ გაცემისას`}
+        size="sm"
+        footer={
+          <>
+            <Button variant="secondary" onClick={() => setOrderOpen(false)}>
+              გაუქმება
+            </Button>
+            <Button onClick={() => void submitOrder()} loading={loading} disabled={!receivedByName.trim()}>
+              შეკვეთის შენახვა
+            </Button>
+          </>
+        }
+      >
+        <div className="space-y-4">
+          <Field label="შემკვეთი" required>
+            <Input value={receivedByName} onChange={(e) => setReceivedByName(e.target.value)} />
+          </Field>
+          <div className="grid grid-cols-2 gap-3">
+            <Field label="ტელეფონი">
+              <Input value={orderPhone} onChange={(e) => setOrderPhone(e.target.value)} />
+            </Field>
+            <Field label="როდისთვის">
+              <Input type="date" value={orderDue} onChange={(e) => setOrderDue(e.target.value)} />
+            </Field>
+          </div>
+          <Field label="ავანსი (₾)">
+            <Input value={orderPrepaid} onChange={(e) => setOrderPrepaid(e.target.value)} inputMode="decimal" />
+          </Field>
+          <Field label="კომენტარი">
+            <Textarea rows={2} value={orderComment} onChange={(e) => setOrderComment(e.target.value)} />
+          </Field>
+        </div>
+      </Modal>
+
+      {/* ------------------------- შეჩერებული კალათები ---------------------- */}
+      <Modal open={showHeld} onClose={() => setShowHeld(false)} title="შეჩერებული კალათები" size="sm">
+        {held.length === 0 ? (
+          <p className="text-sm text-slate-500 text-center py-6">შეჩერებული კალათა არ არის</p>
+        ) : (
+          <div className="space-y-2">
+            {held.map((h) => (
+              <div key={h.id} className="border border-slate-200 rounded-xl p-3 flex items-center justify-between gap-3">
+                <div className="min-w-0">
+                  <p className="text-sm font-bold text-slate-800 truncate">{h.receivedByName || 'უსახელო'}</p>
+                  <p className="text-[11px] text-slate-500">{h.lines.length} პოზიცია</p>
+                </div>
+                <div className="flex gap-1.5">
+                  <Button size="sm" onClick={() => restoreHeld(h)}>
+                    დაბრუნება
+                  </Button>
+                  <Button size="sm" variant="danger" onClick={() => persistHeld(held.filter((x) => x.id !== h.id))}>
+                    წაშლა
+                  </Button>
+                </div>
               </div>
-            )}
-            <div className="flex justify-between text-lg font-bold text-slate-900 pt-1 border-t border-slate-200">
-              <span>სულ</span>
-              <span>{formatMoney(grandTotalTetri)}</span>
-            </div>
+            ))}
           </div>
+        )}
+      </Modal>
 
-          <div className="flex gap-2">
-            <Button variant="secondary" onClick={resetCart} disabled={!cart.length} className="flex-1">
-              გასუფთავება
-            </Button>
-            <Button
-              onClick={() => void completeSale()}
-              loading={loading}
-              disabled={!cart.length || (settings.requireShiftForSale && !myShift)}
-              className="flex-[2]"
-              size="lg"
-            >
-              გაყიდვის დასრულება
-            </Button>
-          </div>
-        </div>
-      </div>
-
-      {/* ------------------------ პროდუქტები ------------------------ */}
-      <div className="flex-1 bg-white rounded-2xl border border-slate-200 shadow-sm flex flex-col overflow-hidden">
-        <div className="p-3 border-b border-slate-200 flex items-center gap-2 flex-wrap">
-          <div className="relative flex-1 min-w-[200px]">
-            <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
-            <Input
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              placeholder="პროდუქტის ძებნა…"
-              className="pl-9"
-            />
-          </div>
-          <Select value={categoryId} onChange={(e) => setCategoryId(e.target.value)} className="w-48">
-            <option value="all">ყველა კატეგორია</option>
-            {productCategories
-              .filter((c) => c.active)
-              .map((c) => (
-                <option key={c.id} value={c.id}>
-                  {c.name}
-                </option>
-              ))}
-          </Select>
-        </div>
-
-        <div className="flex-1 overflow-y-auto p-3">
-          {sellable.length === 0 ? (
-            <div className="h-full flex flex-col items-center justify-center text-slate-300 gap-2">
-              <Package className="w-12 h-12" />
-              <p className="text-xs font-semibold text-slate-400">პროდუქტი ვერ მოიძებნა</p>
-            </div>
-          ) : (
-            <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-4 gap-3">
-              {sellable.map((p) => {
-                const available = availableOf(p);
-                const out = available <= 0;
-                return (
-                  <button
-                    key={p.id}
-                    onClick={() => addToCart(p)}
-                    disabled={out && !settings.allowNegativeStock}
-                    className={`text-left rounded-2xl border p-3 transition shadow-sm cursor-pointer disabled:cursor-not-allowed ${
-                      out
-                        ? 'bg-slate-50 border-slate-200 opacity-60'
-                        : 'bg-white border-slate-200 hover:border-amber-400 hover:shadow-md'
-                    }`}
-                  >
-                    <div className="h-1.5 w-10 rounded-full mb-2" style={{ background: p.color || '#f59e0b' }} />
-                    <p className="text-sm font-bold text-slate-800 leading-tight line-clamp-2 min-h-[2.5rem]">{p.name}</p>
-                    <p className="text-base font-bold text-amber-700 mt-1">{formatMoney(p.sellingPriceTetri)}</p>
-                    <p className={`text-[11px] font-semibold mt-0.5 ${out ? 'text-red-500' : 'text-slate-400'}`}>
-                      მარაგი: {formatQty(available)} {p.unitSymbol}
-                    </p>
-                  </button>
-                );
-              })}
-            </div>
-          )}
-        </div>
-      </div>
-
-      {/* ფასის შეცვლა ერთი გაყიდვისთვის */}
+      {/* ---------------------------- ფასის შეცვლა -------------------------- */}
       <Modal
         open={!!priceEdit}
         onClose={() => setPriceEdit(null)}
@@ -418,47 +727,6 @@ export const POSView: React.FC<Props> = ({ onNavigate }) => {
             autoFocus
           />
         </Field>
-      </Modal>
-
-      {/* დასრულებული გაყიდვა */}
-      <Modal
-        open={!!lastSale}
-        onClose={() => setLastSale(null)}
-        title={`გაყიდვა შესრულდა — ${lastSale?.saleNo ?? ''}`}
-        size="sm"
-        footer={
-          <>
-            <Button variant="secondary" icon={Printer} onClick={() => lastSale && void printPdf(lastSale, 'receipt')}>
-              ქვითარი (80mm)
-            </Button>
-            <Button icon={Printer} onClick={() => lastSale && void printPdf(lastSale, 'waybill')}>
-              ზედნადები PDF
-            </Button>
-          </>
-        }
-      >
-        {lastSale && (
-          <div className="space-y-2 text-sm">
-            <div className="flex justify-between">
-              <span className="text-slate-500">თანხა</span>
-              <span className="font-bold">{formatMoney(lastSale.grandTotalTetri)}</span>
-            </div>
-            <div className="flex justify-between">
-              <span className="text-slate-500">ჩაიბარა</span>
-              <span className="font-bold">{lastSale.receivedByName}</span>
-            </div>
-            <div className="flex justify-between">
-              <span className="text-slate-500">პოზიციები</span>
-              <span className="font-bold">{lastSale.items.length}</span>
-            </div>
-            <button
-              onClick={() => setLastSale(null)}
-              className="w-full mt-3 text-xs font-bold text-slate-400 hover:text-slate-700 cursor-pointer flex items-center justify-center gap-1"
-            >
-              <X className="w-3.5 h-3.5" /> დახურვა და ახალი გაყიდვა
-            </button>
-          </div>
-        )}
       </Modal>
     </div>
   );
