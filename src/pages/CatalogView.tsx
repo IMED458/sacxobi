@@ -4,10 +4,11 @@ import { Badge, Button, Card, CardHeader, Checkbox, EmptyState, Field, Input, Mo
 import { useToast } from '../components/ui/Toast';
 import { useAuth } from '../context/AuthContext';
 import { useData } from '../context/DataContext';
-import { formatMoney, tetriToInput, toTetri } from '../lib/money';
+import { formatMoney, formatQty, tetriToInput, toTetri } from '../lib/money';
 import { FLOOR_LABELS, LOCATION_LABELS } from '../lib/permissions';
 import { changeProductPrice, saveProduct, saveProductCategory, type ProductInput } from '../services/catalog';
-import { newId } from '../services/db';
+import { COL, newId } from '../services/db';
+import { DeleteRecordButton } from '../components/DeleteRecordButton';
 import type { FinishedProduct, Floor, StockLocation } from '../types';
 
 const EMPTY: ProductInput = {
@@ -23,7 +24,7 @@ const EMPTY: ProductInput = {
 
 export const CatalogView: React.FC = () => {
   const { user, can } = useAuth();
-  const { products, productCategories, units, settings } = useData();
+  const { products, productCategories, units, settings, stockLevels } = useData();
   const toast = useToast();
 
   const [showForm, setShowForm] = useState(false);
@@ -40,6 +41,10 @@ export const CatalogView: React.FC = () => {
 
   const [showCategory, setShowCategory] = useState(false);
   const [categoryName, setCategoryName] = useState('');
+
+  /** რამდენი აქვს ამ პროდუქტს ყველა ადგილას ჯამში. */
+  const remainingStock = (productId: string) =>
+    stockLevels.filter((l) => l.itemType === 'PRODUCT' && l.itemId === productId).reduce((sum, l) => sum + l.quantity, 0);
 
   const openNew = () => {
     setEditing(null);
@@ -225,6 +230,17 @@ export const CatalogView: React.FC = () => {
                         რედაქტირება
                       </Button>
                     )}
+                    <DeleteRecordButton
+                      collection={COL.products}
+                      id={p.id}
+                      entityType="product"
+                      label={`პროდუქტი „${p.name}"`}
+                      warning={
+                        remainingStock(p.id) > 0
+                          ? `ყურადღება: ამ პროდუქტს მარაგში ჯერ კიდევ აქვს ${formatQty(remainingStock(p.id))} ${p.unitSymbol}. სასურველია ჯერ ინვენტარიზაციით განულება, თორემ ნაშთი „უპატრონოდ" დარჩება. ძველი გაყიდვები და წარმოება არ დაზიანდება — ისინი დასახელებასა და ფასს snapshot-ად ინახავენ.`
+                          : 'პროდუქტი სამუდამოდ წაიშლება და POS-იდან გაქრება. ძველი გაყიდვები, წარმოება და რეპორტები არ დაზიანდება — ისინი დასახელებასა და ფასს snapshot-ად ინახავენ. თუ მხოლოდ დროებით გინდათ დამალვა, ჯობია „აქტიური"-ს გამორთვა.'
+                      }
+                    />
                   </div>
                 </Td>
               </tr>
@@ -383,6 +399,50 @@ export const CatalogView: React.FC = () => {
           </Field>
         </div>
       </Modal>
+
+      {productCategories.length > 0 && (
+        <Card>
+          <CardHeader title="კატეგორიები" subtitle="POS-ის ტაბები ამ სიის მიხედვით იწყობა" icon={Tag} />
+          <Table
+            head={
+              <tr>
+                <Th>დასახელება</Th>
+                <Th>სტატუსი</Th>
+                <Th />
+              </tr>
+            }
+          >
+            {productCategories.map((c) => (
+              <tr key={c.id} className="hover:bg-slate-50">
+                <Td className="font-semibold">{c.name}</Td>
+                <Td>
+                  <Badge tone={c.active ? 'green' : 'slate'}>{c.active ? 'აქტიური' : 'გათიშული'}</Badge>
+                </Td>
+                <Td>
+                  <div className="flex gap-1 justify-end">
+                    {can('product.manage') && (
+                      <Button
+                        size="sm"
+                        variant="secondary"
+                        onClick={() => user && void saveProductCategory(user, { ...c, active: !c.active })}
+                      >
+                        {c.active ? 'გათიშვა' : 'გააქტიურება'}
+                      </Button>
+                    )}
+                    <DeleteRecordButton
+                      collection={COL.productCategories}
+                      id={c.id}
+                      entityType="productCategory"
+                      label={`კატეგორია „${c.name}"`}
+                      warning="კატეგორია წაიშლება. პროდუქტები არ წაიშლება — უბრალოდ კატეგორიის გარეშე დარჩებიან."
+                    />
+                  </div>
+                </Td>
+              </tr>
+            ))}
+          </Table>
+        </Card>
+      )}
 
       <Modal
         open={showCategory}

@@ -7,7 +7,8 @@ import { useData } from '../context/DataContext';
 import { formatQty } from '../lib/money';
 import { LOCATION_LABELS } from '../lib/permissions';
 import { saveMaterial, saveRecipe, saveUnit, type MaterialInput } from '../services/catalog';
-import { newId } from '../services/db';
+import { COL, newId } from '../services/db';
+import { DeleteRecordButton } from '../components/DeleteRecordButton';
 import type { Material, Recipe, RecipeIngredient, StorageLocation } from '../types';
 
 const EMPTY: MaterialInput = {
@@ -200,11 +201,24 @@ export const MaterialsView: React.FC = () => {
                     <Badge tone={m.active ? 'green' : 'slate'}>{m.active ? 'აქტიური' : 'გათიშული'}</Badge>
                   </Td>
                   <Td>
-                    {can('material.manage') && (
-                      <Button size="sm" variant="secondary" onClick={() => openEdit(m)}>
-                        რედაქტირება
-                      </Button>
-                    )}
+                    <div className="flex gap-1 justify-end">
+                      {can('material.manage') && (
+                        <Button size="sm" variant="secondary" onClick={() => openEdit(m)}>
+                          რედაქტირება
+                        </Button>
+                      )}
+                      <DeleteRecordButton
+                        collection={COL.materials}
+                        id={m.id}
+                        entityType="material"
+                        label={`ნედლეული „${m.name}"`}
+                        warning={
+                          wh + fr > 0
+                            ? `ყურადღება: მარაგში ჯერ კიდევ არის ${formatQty(wh + fr)} ${m.unitSymbol}. სასურველია ჯერ ინვენტარიზაციით განულება. ძველი წარმოება და შესყიდვები არ დაზიანდება.`
+                            : 'ნედლეული სამუდამოდ წაიშლება. ძველი წარმოება და შესყიდვები არ დაზიანდება — ისინი დასახელებას snapshot-ად ინახავენ.'
+                        }
+                      />
+                    </div>
                   </Td>
                 </tr>
               );
@@ -249,11 +263,20 @@ export const MaterialsView: React.FC = () => {
                 </Td>
                 <Td className="text-right">v{r.version}</Td>
                 <Td>
-                  {can('recipe.manage') && (
-                    <Button size="sm" variant="secondary" onClick={() => openRecipe(r)}>
-                      რედაქტირება
-                    </Button>
-                  )}
+                  <div className="flex gap-1 justify-end">
+                    {can('recipe.manage') && (
+                      <Button size="sm" variant="secondary" onClick={() => openRecipe(r)}>
+                        რედაქტირება
+                      </Button>
+                    )}
+                    <DeleteRecordButton
+                      collection={COL.recipes}
+                      id={r.id}
+                      entityType="recipe"
+                      label={`რეცეპტი „${r.productName}"`}
+                      warning="რეცეპტი წაიშლება. უკვე დაფიქსირებული წარმოება არ შეიცვლება — მან რეალური ხარჯვა თავისთვის შეინახა."
+                    />
+                  </div>
                 </Td>
               </tr>
             ))}

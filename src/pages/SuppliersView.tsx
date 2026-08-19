@@ -10,6 +10,7 @@ import { saveSupplier } from '../services/catalog';
 import { paySupplier } from '../services/purchases';
 import { fetchAll } from '../services/db';
 import { COL } from '../services/db';
+import { DeleteRecordButton } from '../components/DeleteRecordButton';
 import type { Purchase, Supplier } from '../types';
 
 interface PriceRow {
@@ -205,6 +206,17 @@ export const SuppliersView: React.FC = () => {
                         )}
                       </>
                     )}
+                    <DeleteRecordButton
+                      collection={COL.suppliers}
+                      id={s.id}
+                      entityType="supplier"
+                      label={`მომწოდებელი „${s.name}"`}
+                      warning={
+                        s.balanceTetri > 0
+                          ? `ყურადღება: ამ მომწოდებელს ერიცხება დავალიანება ${formatMoney(s.balanceTetri)}. წაშლის შემდეგ ეს ინფორმაცია დაიკარგება.`
+                          : 'მომწოდებელი წაიშლება. შესყიდვების ისტორია არ დაზიანდება — დოკუმენტები დასახელებას snapshot-ად ინახავენ.'
+                      }
+                    />
                   </div>
                 </Td>
               </tr>
