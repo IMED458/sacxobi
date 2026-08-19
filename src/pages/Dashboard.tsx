@@ -7,6 +7,7 @@ import {
   Package,
   Receipt,
   ShoppingCart,
+  Truck,
   TrendingUp,
   Wallet
 } from 'lucide-react';
@@ -25,7 +26,7 @@ interface Props {
 
 export const Dashboard: React.FC<Props> = ({ onNavigate }) => {
   const { user, can } = useAuth();
-  const { transferRequests, materials, stockLevels, products, myShift } = useData();
+  const { transferRequests, materials, stockLevels, products, myShift, suppliers } = useData();
   const [summary, setSummary] = useState<DaySummary | null>(null);
   const [sales, setSales] = useState<Sale[]>([]);
   const [production, setProduction] = useState<ProductionBatch[]>([]);
@@ -63,6 +64,9 @@ export const Dashboard: React.FC<Props> = ({ onNavigate }) => {
       fridge: stockLevels.find((l) => l.id === `MATERIAL__${m.id}__FRIDGE`)?.quantity ?? 0
     }))
     .filter((x) => x.warehouse + x.fridge <= x.material.minStock);
+
+  const supplierDebtTetri = suppliers.reduce((sum, s) => sum + Math.max(0, s.balanceTetri), 0);
+  const indebtedSuppliers = suppliers.filter((s) => s.balanceTetri > 0);
 
   const mySales = sales.filter((s) => s.soldByUserId === user?.id && s.status !== 'cancelled');
   const topProducts = groupSales(sales, 'product').slice(0, 5);
@@ -268,6 +272,14 @@ export const Dashboard: React.FC<Props> = ({ onNavigate }) => {
             tone={lowStock.length ? 'red' : 'slate'}
             onClick={() => onNavigate('stock')}
           />
+          <StatCard
+            label="მომწოდებლების ვალი"
+            value={formatMoney(supplierDebtTetri)}
+            hint={indebtedSuppliers.length ? `${indebtedSuppliers.length} მომწოდებელი` : 'ვალი არ არის'}
+            icon={Truck}
+            tone={supplierDebtTetri > 0 ? 'red' : 'slate'}
+            onClick={() => onNavigate('purchases')}
+          />
         </div>
       )}
 
@@ -326,6 +338,32 @@ export const Dashboard: React.FC<Props> = ({ onNavigate }) => {
           )}
         </Card>
       </div>
+
+      {indebtedSuppliers.length > 0 && (
+        <Card>
+          <CardHeader title="მომწოდებლების დავალიანება" icon={Truck} />
+          <Table
+            head={
+              <tr>
+                <Th>მომწოდებელი</Th>
+                <Th>ტელეფონი</Th>
+                <Th className="text-right">ვალი</Th>
+              </tr>
+            }
+          >
+            {indebtedSuppliers
+              .slice()
+              .sort((a, b) => b.balanceTetri - a.balanceTetri)
+              .map((s) => (
+                <tr key={s.id} className="hover:bg-slate-50 cursor-pointer" onClick={() => onNavigate('purchases')}>
+                  <Td className="font-semibold">{s.name}</Td>
+                  <Td className="text-xs text-slate-500">{s.phone ?? '—'}</Td>
+                  <Td className="text-right font-bold text-red-600">{formatMoney(s.balanceTetri)}</Td>
+                </tr>
+              ))}
+          </Table>
+        </Card>
+      )}
 
       {(pending.length > 0 || lowStock.length > 0) && (
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">

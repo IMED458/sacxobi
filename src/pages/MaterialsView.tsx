@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Boxes, ChefHat, Plus, Trash2 } from 'lucide-react';
-import { Badge, Button, Card, CardHeader, Checkbox, EmptyState, Field, Input, Modal, Select, Table, Td, Textarea, Th } from '../components/ui';
+import { Badge, Button, Card, CardHeader, Checkbox, EmptyState, Field, Input, Modal, NumberInput, Select, Table, Td, Textarea, Th } from '../components/ui';
 import { useToast } from '../components/ui/Toast';
 import { useAuth } from '../context/AuthContext';
 import { useData } from '../context/DataContext';
@@ -328,12 +328,7 @@ export const MaterialsView: React.FC = () => {
             </Select>
           </Field>
           <Field label="მინიმალური ნაშთი">
-            <Input
-              value={form.minStock}
-              onChange={(e) => setForm({ ...form, minStock: Number(e.target.value) || 0 })}
-              type="number"
-              step="0.001"
-            />
+            <NumberInput value={form.minStock} onChange={(v) => setForm({ ...form, minStock: v })} />
           </Field>
           <Field label="აღწერა" className="md:col-span-2">
             <Textarea rows={2} value={form.description ?? ''} onChange={(e) => setForm({ ...form, description: e.target.value })} />
@@ -408,7 +403,7 @@ export const MaterialsView: React.FC = () => {
               </Select>
             </Field>
             <Field label="გამოსავალი რაოდენობა" required hint="მაგ: 100 ცალი პური">
-              <Input value={outputQty} onChange={(e) => setOutputQty(e.target.value)} type="number" step="0.001" />
+              <Input value={outputQty} onChange={(e) => setOutputQty(e.target.value)} inputMode="decimal" placeholder="მაგ. 100" />
             </Field>
           </div>
 
@@ -474,17 +469,15 @@ export const MaterialsView: React.FC = () => {
                     </div>
                     <div className="col-span-3">
                       <Field label={`რაოდენობა (${ing.unitSymbol})`}>
-                        <Input
+                        <NumberInput
                           value={ing.quantity}
-                          onChange={(e) =>
+                          onChange={(v) =>
                             setIngredients((prev) => {
                               const next = [...prev];
-                              next[idx] = { ...next[idx], quantity: Number(e.target.value) || 0 };
+                              next[idx] = { ...next[idx], quantity: v };
                               return next;
                             })
                           }
-                          type="number"
-                          step="0.001"
                         />
                       </Field>
                     </div>

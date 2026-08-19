@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { FileClock, Plus, Trash2, Truck } from 'lucide-react';
-import { Badge, Button, Card, CardHeader, EmptyState, Field, Input, Modal, Select, Table, Td, Th } from '../components/ui';
+import { Badge, Button, Card, CardHeader, EmptyState, Field, Input, Modal, MoneyInput, NumberInput, Select, Table, Td, Th } from '../components/ui';
 import { useToast } from '../components/ui/Toast';
 import { useAuth } from '../context/AuthContext';
 import { useData } from '../context/DataContext';
@@ -23,7 +23,7 @@ export const PurchaseNewView: React.FC<{ onDone: () => void }> = ({ onDone }) =>
   const toast = useToast();
 
   const [supplierId, setSupplierId] = useState('');
-  const [paidText, setPaidText] = useState('0');
+  const [paidText, setPaidText] = useState('');
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('CASH');
   const [comment, setComment] = useState('');
   const [lines, setLines] = useState<DraftLine[]>([]);
@@ -44,7 +44,7 @@ export const PurchaseNewView: React.FC<{ onDone: () => void }> = ({ onDone }) =>
         itemCode: m.code,
         unitSymbol: m.unitSymbol,
         quantity: 0,
-        unitCostText: '0',
+        unitCostText: '',
         location: m.defaultStorageLocation
       }
     ]);
@@ -65,7 +65,7 @@ export const PurchaseNewView: React.FC<{ onDone: () => void }> = ({ onDone }) =>
         itemCode: p.code,
         unitSymbol: p.unitSymbol,
         quantity: 0,
-        unitCostText: '0',
+        unitCostText: '',
         location: p.salesLocation
       }
     ]);
@@ -105,7 +105,7 @@ export const PurchaseNewView: React.FC<{ onDone: () => void }> = ({ onDone }) =>
       });
       toast.success(`შესყიდვა დაფიქსირდა — ${purchase.documentNo}`);
       setLines([]);
-      setPaidText('0');
+      setPaidText('');
       setComment('');
       onDone();
     } catch (err) {
@@ -192,17 +192,12 @@ export const PurchaseNewView: React.FC<{ onDone: () => void }> = ({ onDone }) =>
                   </div>
                   <div className="col-span-2">
                     <Field label={`რაოდენობა (${line.unitSymbol})`}>
-                      <Input
-                        value={line.quantity}
-                        onChange={(e) => update(idx, { quantity: Number(e.target.value) || 0 })}
-                        type="number"
-                        step="0.001"
-                      />
+                      <NumberInput value={line.quantity} onChange={(v) => update(idx, { quantity: v })} />
                     </Field>
                   </div>
                   <div className="col-span-2">
                     <Field label="ფასი ერთეულზე (₾)">
-                      <Input value={line.unitCostText} onChange={(e) => update(idx, { unitCostText: e.target.value })} inputMode="decimal" />
+                      <MoneyInput value={line.unitCostText} onChange={(v) => update(idx, { unitCostText: v })} />
                     </Field>
                   </div>
                   <div className="col-span-2">
@@ -234,8 +229,8 @@ export const PurchaseNewView: React.FC<{ onDone: () => void }> = ({ onDone }) =>
 
         <div className="flex flex-wrap items-end justify-between gap-4 pt-2 border-t border-slate-200">
           <div className="flex gap-4">
-            <Field label="გადახდილი თანხა (₾)">
-              <Input value={paidText} onChange={(e) => setPaidText(e.target.value)} inputMode="decimal" className="w-40" />
+            <Field label="გადახდილი თანხა (₾)" hint="ცარიელი = გადახდა არ მომხდარა, სრული თანხა ვალად დაერიცხება">
+              <MoneyInput value={paidText} onChange={setPaidText} className="w-40" />
             </Field>
             <div className="pb-2.5">
               <p className="text-[11px] font-bold text-slate-500 uppercase">დარჩენილი დავალიანება</p>

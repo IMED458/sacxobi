@@ -1,17 +1,17 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { Building2, Plus, TrendingDown, Wallet } from 'lucide-react';
-import { Badge, Button, Card, CardHeader, EmptyState, Field, Input, Modal, Table, Td, Textarea, Th } from '../components/ui';
+import { Building2, Plus, Trash2, TrendingDown, Wallet } from 'lucide-react';
+import { Badge, Button, Card, CardHeader, EmptyState, Field, Input, Modal, MoneyInput, Select, Table, Td, Textarea, Th } from '../components/ui';
 import { useToast } from '../components/ui/Toast';
 import { useAuth } from '../context/AuthContext';
 import { useData } from '../context/DataContext';
 import { formatDate } from '../lib/dates';
 import { formatMoney, formatQty, toTetri } from '../lib/money';
 import { saveSupplier } from '../services/catalog';
-import { paySupplier } from '../services/purchases';
+import { fetchOpenPurchases, fetchSupplierPayments, paySupplier } from '../services/supplierPayments';
 import { fetchAll } from '../services/db';
 import { COL } from '../services/db';
 import { DeleteRecordButton } from '../components/DeleteRecordButton';
-import type { Purchase, Supplier } from '../types';
+import type { PaymentMethod, Purchase, Supplier, SupplierPayment, SupplierPaymentLine } from '../types';
 
 interface PriceRow {
   itemName: string;
@@ -35,7 +35,12 @@ export const SuppliersView: React.FC = () => {
   const [creating, setCreating] = useState(false);
   const [detail, setDetail] = useState<Supplier | null>(null);
   const [paying, setPaying] = useState<Supplier | null>(null);
-  const [payAmount, setPayAmount] = useState('');
+  const [openPurchases, setOpenPurchases] = useState<Purchase[]>([]);
+  const [docAmounts, setDocAmounts] = useState<Record<string, string>>({});
+  const [freeLines, setFreeLines] = useState<{ itemName: string; amount: string }[]>([]);
+  const [payMethod, setPayMethod] = useState<PaymentMethod>('CASH');
+  const [payComment, setPayComment] = useState('');
+  const [payHistory, setPayHistory] = useState<SupplierPayment[]>([]);
   const [saving, setSaving] = useState(false);
   const [form, setForm] = useState({ name: '', taxId: '', contactPerson: '', phone: '', address: '', comment: '' });
 
@@ -90,14 +95,54 @@ export const SuppliersView: React.FC = () => {
     }
   };
 
+  const openPayment = async (supplier: Supplier) => {
+    setPaying(supplier);
+    setDocAmounts({});
+    setFreeLines([]);
+    setPayComment('');
+    setPayMethod('CASH');
+    try {
+      setOpenPurchases(await fetchOpenPurchases(supplier.id));
+    } catch (err) {
+      toast.error(err);
+    }
+  };
+
+  const paymentLines = (): SupplierPaymentLine[] => {
+    const lines: SupplierPaymentLine[] = [];
+    openPurchases.forEach((p) => {
+      const amount = toTetri(docAmounts[p.id] || '0');
+      if (amount > 0) {
+        lines.push({
+          purchaseId: p.id,
+          documentNo: p.documentNo,
+          itemName: p.items.map((i) => i.itemName).join(', '),
+          amountTetri: amount
+        });
+      }
+    });
+    freeLines.forEach((l) => {
+      const amount = toTetri(l.amount || '0');
+      if (amount > 0) lines.push({ itemName: l.itemName.trim() || 'სხვა', amountTetri: amount });
+    });
+    return lines;
+  };
+
+  const payTotal = paymentLines().reduce((s, l) => s + l.amountTetri, 0);
+
   const submitPayment = async () => {
     if (!user || !paying) return;
     setSaving(true);
     try {
-      await paySupplier(user, paying.id, toTetri(payAmount));
+      await paySupplier(user, {
+        supplierId: paying.id,
+        lines: paymentLines(),
+        paymentMethod: payMethod,
+        comment: payComment || undefined
+      });
       toast.success('გადახდა დაფიქსირდა');
       setPaying(null);
-      setPayAmount('');
+      setPurchases(await fetchAll<Purchase>(COL.purchases));
     } catch (err) {
       toast.error(err);
     } finally {
@@ -191,7 +236,14 @@ export const SuppliersView: React.FC = () => {
                 </Td>
                 <Td>
                   <div className="flex gap-1 justify-end">
-                    <Button size="sm" variant="secondary" onClick={() => setDetail(s)}>
+                    <Button
+                      size="sm"
+                      variant="secondary"
+                      onClick={() => {
+                        setDetail(s);
+                        void fetchSupplierPayments(s.id).then(setPayHistory).catch(() => setPayHistory([]));
+                      }}
+                    >
                       ისტორია
                     </Button>
                     {can('supplier.manage') && (
@@ -200,8 +252,8 @@ export const SuppliersView: React.FC = () => {
                           რედაქტირება
                         </Button>
                         {s.balanceTetri > 0 && (
-                          <Button size="sm" icon={Wallet} onClick={() => setPaying(s)}>
-                            გადახდა
+                          <Button size="sm" icon={Wallet} onClick={() => void openPayment(s)}>
+                            ვალის გადახდა
                           </Button>
                         )}
                       </>
@@ -295,6 +347,25 @@ export const SuppliersView: React.FC = () => {
               ))}
             </Table>
 
+            {payHistory.length > 0 && (
+              <div>
+                <p className="text-xs font-bold text-slate-500 uppercase mb-2">გადახდების ისტორია</p>
+                <div className="space-y-1.5">
+                  {payHistory.map((pay) => (
+                    <div key={pay.id} className="border border-slate-200 rounded-xl px-3 py-2 text-xs">
+                      <div className="flex items-center justify-between">
+                        <span className="font-bold text-slate-800">{formatDate(pay.businessDate)}</span>
+                        <span className="font-bold text-emerald-700">{formatMoney(pay.totalTetri)}</span>
+                      </div>
+                      <p className="text-[11px] text-slate-500 mt-0.5">
+                        {pay.lines.map((l) => `${l.documentNo ?? l.itemName ?? '—'}: ${formatMoney(l.amountTetri)}`).join(' · ')}
+                      </p>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
             {priceRows.map((r) => (
               <div key={`h-${r.itemName}`}>
                 <p className="text-xs font-bold text-slate-500 uppercase mb-1">{r.itemName} — ფასების ისტორია</p>
@@ -315,26 +386,130 @@ export const SuppliersView: React.FC = () => {
       <Modal
         open={!!paying}
         onClose={() => setPaying(null)}
-        title="მომწოდებლისთვის გადახდა"
-        size="sm"
+        title={`ვალის გადახდა — ${paying?.name ?? ''}`}
+        subtitle={paying ? `მიმდინარე დავალიანება: ${formatMoney(paying.balanceTetri)}` : undefined}
+        size="lg"
         footer={
           <>
+            <div className="mr-auto text-left">
+              <p className="text-[11px] font-bold text-slate-500 uppercase">გადასახდელი ჯამი</p>
+              <p className="text-xl font-bold text-slate-900">{formatMoney(payTotal)}</p>
+            </div>
             <Button variant="secondary" onClick={() => setPaying(null)}>
               გაუქმება
             </Button>
-            <Button onClick={() => void submitPayment()} loading={saving}>
-              დადასტურება
+            <Button onClick={() => void submitPayment()} loading={saving} disabled={payTotal <= 0}>
+              გადახდის დაფიქსირება
             </Button>
           </>
         }
       >
-        <div className="space-y-3">
-          <p className="text-sm text-slate-600">
-            მიმდინარე დავალიანება: <span className="font-bold">{formatMoney(paying?.balanceTetri ?? 0)}</span>
-          </p>
-          <Field label="თანხა (₾)" required>
-            <Input value={payAmount} onChange={(e) => setPayAmount(e.target.value)} inputMode="decimal" />
-          </Field>
+        <div className="space-y-5">
+          <div>
+            <p className="text-xs font-bold text-slate-500 uppercase mb-2">დაუფარავი შესყიდვები</p>
+            {openPurchases.length === 0 ? (
+              <p className="text-xs text-slate-400 border border-slate-200 rounded-xl p-3">
+                დაუფარავი შესყიდვის დოკუმენტი არ არის — თანხა ქვემოთ, თავისუფალ ველში მიუთითეთ.
+              </p>
+            ) : (
+              <div className="border border-slate-200 rounded-2xl divide-y divide-slate-100">
+                {openPurchases.map((p) => (
+                  <div key={p.id} className="p-3 flex items-center gap-3 flex-wrap">
+                    <div className="flex-1 min-w-[200px]">
+                      <p className="text-sm font-bold text-slate-800">{p.documentNo}</p>
+                      <p className="text-[11px] text-slate-500">
+                        {formatDate(p.businessDate)} · {p.items.map((i) => `${i.itemName} (${formatQty(i.quantity)} ${i.unitSymbol})`).join(', ')}
+                      </p>
+                    </div>
+                    <div className="text-right">
+                      <p className="text-[11px] text-slate-500">დარჩენილი</p>
+                      <p className="text-sm font-bold text-red-600">{formatMoney(p.balanceTetri)}</p>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <MoneyInput
+                        value={docAmounts[p.id] ?? ''}
+                        onChange={(v) => setDocAmounts((prev) => ({ ...prev, [p.id]: v }))}
+                        className="w-32 text-right"
+                      />
+                      <Button
+                        size="sm"
+                        variant="secondary"
+                        onClick={() => setDocAmounts((prev) => ({ ...prev, [p.id]: (p.balanceTetri / 100).toFixed(2) }))}
+                      >
+                        სრულად
+                      </Button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
+          <div>
+            <div className="flex items-center justify-between mb-2">
+              <p className="text-xs font-bold text-slate-500 uppercase">სხვა პოზიციები (პროდუქტის მითითებით)</p>
+              <Button
+                size="sm"
+                variant="secondary"
+                icon={Plus}
+                onClick={() => setFreeLines((prev) => [...prev, { itemName: '', amount: '' }])}
+              >
+                პოზიციის დამატება
+              </Button>
+            </div>
+            {freeLines.length === 0 ? (
+              <p className="text-[11px] text-slate-400">თუ გადახდა კონკრეტულ დოკუმენტს არ უკავშირდება — დაამატეთ პოზიცია ხელით.</p>
+            ) : (
+              <div className="space-y-2">
+                {freeLines.map((line, idx) => (
+                  <div key={idx} className="flex items-center gap-2">
+                    <Input
+                      value={line.itemName}
+                      onChange={(e) =>
+                        setFreeLines((prev) => {
+                          const next = [...prev];
+                          next[idx] = { ...next[idx], itemName: e.target.value };
+                          return next;
+                        })
+                      }
+                      placeholder="რისთვის (მაგ. ფქვილი)"
+                      className="flex-1"
+                    />
+                    <MoneyInput
+                      value={line.amount}
+                      onChange={(v) =>
+                        setFreeLines((prev) => {
+                          const next = [...prev];
+                          next[idx] = { ...next[idx], amount: v };
+                          return next;
+                        })
+                      }
+                      className="w-32 text-right"
+                    />
+                    <button
+                      onClick={() => setFreeLines((prev) => prev.filter((_, i) => i !== idx))}
+                      className="p-2 text-slate-300 hover:text-red-500 cursor-pointer"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <Field label="გადახდის ფორმა">
+              <Select value={payMethod} onChange={(e) => setPayMethod(e.target.value as PaymentMethod)}>
+                <option value="CASH">ნაღდი</option>
+                <option value="CARD">ბარათი</option>
+                <option value="BANK_TRANSFER">საბანკო გადარიცხვა</option>
+              </Select>
+            </Field>
+            <Field label="კომენტარი">
+              <Input value={payComment} onChange={(e) => setPayComment(e.target.value)} />
+            </Field>
+          </div>
         </div>
       </Modal>
     </div>

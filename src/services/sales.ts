@@ -60,6 +60,7 @@ export interface SaleInput {
   lines: CartLine[];
   discountTetri: number;
   paymentMethod: PaymentMethod;
+  priceType?: 'RETAIL' | 'WHOLESALE';
   paidTetri: number;
   receivedByName: string;
   receivedByPhone?: string;
@@ -166,6 +167,7 @@ export async function createSale(user: AppUser, settings: AppSettings, input: Sa
       costTotalTetri,
       grossProfitTetri: grandTotalTetri - costTotalTetri,
       paymentMethod: input.paymentMethod,
+      priceType: input.priceType ?? 'RETAIL',
       paidTetri,
       balanceDueTetri: grandTotalTetri - paidTetri,
       status: 'active',

@@ -72,6 +72,7 @@ export interface ProductInput {
   weightGrams?: number;
   weightSettingKey?: FinishedProduct['weightSettingKey'];
   sellingPriceTetri: number;
+  wholesalePriceTetri?: number;
   categoryId?: string;
   color?: string;
   active: boolean;
@@ -94,6 +95,7 @@ export async function saveProduct(user: AppUser, input: ProductInput, before?: F
     weightGrams: input.weightGrams,
     weightSettingKey: input.weightSettingKey,
     sellingPriceTetri: Math.round(input.sellingPriceTetri),
+    wholesalePriceTetri: input.wholesalePriceTetri != null ? Math.round(input.wholesalePriceTetri) : undefined,
     categoryId: input.categoryId,
     color: input.color,
     active: input.active,

@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Package, Plus, Tag, TrendingUp } from 'lucide-react';
-import { Badge, Button, Card, CardHeader, Checkbox, EmptyState, Field, Input, Modal, Select, Table, Td, Th } from '../components/ui';
+import { Badge, Button, Card, CardHeader, Checkbox, EmptyState, Field, Input, Modal, MoneyInput, Select, Table, Td, Th } from '../components/ui';
 import { useToast } from '../components/ui/Toast';
 import { useAuth } from '../context/AuthContext';
 import { useData } from '../context/DataContext';
@@ -30,7 +30,8 @@ export const CatalogView: React.FC = () => {
   const [showForm, setShowForm] = useState(false);
   const [editing, setEditing] = useState<FinishedProduct | null>(null);
   const [form, setForm] = useState<ProductInput>({ ...EMPTY });
-  const [priceText, setPriceText] = useState('0');
+  const [priceText, setPriceText] = useState('');
+  const [wholesaleText, setWholesaleText] = useState('');
   const [imageUrl, setImageUrl] = useState('');
   const [weightText, setWeightText] = useState('');
   const [saving, setSaving] = useState(false);
@@ -49,7 +50,8 @@ export const CatalogView: React.FC = () => {
   const openNew = () => {
     setEditing(null);
     setForm({ ...EMPTY });
-    setPriceText('0');
+    setPriceText('');
+    setWholesaleText('');
     setWeightText('');
     setImageUrl('');
     setShowForm(true);
@@ -75,6 +77,7 @@ export const CatalogView: React.FC = () => {
     });
     setImageUrl(p.imageUrl ?? '');
     setPriceText(tetriToInput(p.sellingPriceTetri));
+    setWholesaleText(p.wholesalePriceTetri != null ? tetriToInput(p.wholesalePriceTetri) : '');
     setWeightText(p.weightGrams ? String(p.weightGrams) : '');
     setShowForm(true);
   };
@@ -89,6 +92,7 @@ export const CatalogView: React.FC = () => {
           ...form,
           imageUrl: imageUrl.trim() || undefined,
           sellingPriceTetri: toTetri(priceText),
+          wholesalePriceTetri: wholesaleText.trim() ? toTetri(wholesaleText) : undefined,
           weightGrams: form.weightSettingKey ? undefined : weightText ? Number(weightText) : undefined
         },
         editing ?? undefined
@@ -170,7 +174,8 @@ export const CatalogView: React.FC = () => {
                 <Th>წარმოების სართული</Th>
                 <Th>იყიდება</Th>
                 <Th>გრამაჟი</Th>
-                <Th className="text-right">ფასი</Th>
+                <Th className="text-right">ჩვეულებრივი</Th>
+                <Th className="text-right">გამტანის</Th>
                 <Th>სტატუსი</Th>
                 <Th />
               </tr>
@@ -207,6 +212,9 @@ export const CatalogView: React.FC = () => {
                       : '—'}
                 </Td>
                 <Td className="text-right font-bold">{formatMoney(p.sellingPriceTetri)}</Td>
+                <Td className="text-right text-slate-500">
+                  {p.wholesalePriceTetri != null ? formatMoney(p.wholesalePriceTetri) : '—'}
+                </Td>
                 <Td>
                   <Badge tone={p.active ? 'green' : 'slate'}>{p.active ? 'აქტიური' : 'გათიშული'}</Badge>
                 </Td>
@@ -310,8 +318,11 @@ export const CatalogView: React.FC = () => {
                 ))}
             </Select>
           </Field>
-          <Field label="გასაყიდი ფასი (₾)" required>
-            <Input value={priceText} onChange={(e) => setPriceText(e.target.value)} inputMode="decimal" />
+          <Field label="ჩვეულებრივი ფასი (₾)" required hint="ცალობით მყიდველისთვის">
+            <MoneyInput value={priceText} onChange={setPriceText} />
+          </Field>
+          <Field label="გამტანის ფასი (₾)" hint="დიდი რაოდენობით წამღებზე — ცარიელი = იგივე ფასი">
+            <MoneyInput value={wholesaleText} onChange={setWholesaleText} />
           </Field>
           <Field label="კატეგორია">
             <Select value={form.categoryId ?? ''} onChange={(e) => setForm({ ...form, categoryId: e.target.value || undefined })}>
@@ -392,7 +403,7 @@ export const CatalogView: React.FC = () => {
             მიმდინარე ფასი: <span className="font-bold text-slate-900">{formatMoney(priceTarget?.sellingPriceTetri ?? 0)}</span>
           </p>
           <Field label="ახალი ფასი (₾)" required>
-            <Input value={newPrice} onChange={(e) => setNewPrice(e.target.value)} inputMode="decimal" />
+            <MoneyInput value={newPrice} onChange={setNewPrice} autoFocus />
           </Field>
           <Field label="მიზეზი">
             <Input value={priceReason} onChange={(e) => setPriceReason(e.target.value)} />

@@ -138,25 +138,3 @@ export async function createPurchase(
     return purchase;
   });
 }
-
-/** მომწოდებლისთვის თანხის გადახდა (დავალიანების დაფარვა). */
-export async function paySupplier(user: AppUser, supplierId: string, amountTetri: number, comment?: string): Promise<void> {
-  assertPermission(user, 'supplier.manage');
-  if (amountTetri <= 0) throw new Error('თანხა უნდა იყოს 0-ზე მეტი');
-  await runTransaction(db, async (tx) => {
-    const ref = docRef(COL.suppliers, supplierId);
-    const snap = await tx.get(ref);
-    if (!snap.exists()) throw new Error('მომწოდებელი ვერ მოიძებნა');
-    const supplier = snap.data() as Supplier;
-    tx.set(ref, { balanceTetri: supplier.balanceTetri - Math.round(amountTetri), updatedAt: new Date().toISOString() }, { merge: true });
-    logAuditTx(tx, user, {
-      action: 'SUPPLIER_PAYMENT',
-      entityType: 'supplier',
-      entityId: supplierId,
-      summary: `მომწოდებელს გადაერიცხა: ${supplier.name}`,
-      before: { balanceTetri: supplier.balanceTetri },
-      after: { balanceTetri: supplier.balanceTetri - Math.round(amountTetri) },
-      reason: comment
-    });
-  });
-}

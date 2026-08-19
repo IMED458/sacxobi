@@ -226,7 +226,7 @@ export const TransfersView: React.FC = () => {
             </Select>
           </Field>
           <Field label="რაოდენობა" required>
-            <Input value={quantity} onChange={(e) => setQuantity(e.target.value)} inputMode="decimal" type="number" step="0.001" />
+            <Input value={quantity} onChange={(e) => setQuantity(e.target.value)} inputMode="decimal" placeholder="მაგ. 10" />
           </Field>
           <Field label="შენიშვნა">
             <Input value={note} onChange={(e) => setNote(e.target.value)} />
@@ -260,7 +260,7 @@ export const TransfersView: React.FC = () => {
             </span>
           </div>
           <Field label="რეალურად ატანილი რაოდენობა" required>
-            <Input value={fulfillQty} onChange={(e) => setFulfillQty(e.target.value)} inputMode="decimal" type="number" step="0.001" />
+            <Input value={fulfillQty} onChange={(e) => setFulfillQty(e.target.value)} inputMode="decimal" autoFocus />
           </Field>
           <Field label="კომენტარი">
             <Input value={fulfillNote} onChange={(e) => setFulfillNote(e.target.value)} />

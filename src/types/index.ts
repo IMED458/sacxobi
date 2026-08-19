@@ -110,6 +110,8 @@ export interface FinishedProduct {
   /** გრამაჟი პარამეტრებიდან: 'SMALL_BREAD' | 'LARGE_BREAD' | undefined */
   weightSettingKey?: 'smallBreadWeightGrams' | 'largeBreadWeightGrams';
   sellingPriceTetri: number;
+  /** გამტანის / საბითუმო ფასი — დიდი რაოდენობით წამღებ პირებზე. */
+  wholesalePriceTetri?: number;
   categoryId?: string;
   color?: string;
   active: boolean;
@@ -211,6 +213,27 @@ export interface Purchase {
   createdBy: string;
   createdByName: string;
   createdAt: string;
+}
+
+export interface SupplierPaymentLine {
+  purchaseId?: string;
+  documentNo?: string;
+  itemName?: string;
+  amountTetri: number;
+}
+
+export interface SupplierPayment {
+  id: string;
+  supplierId: string;
+  supplierName: string;
+  date: string;
+  businessDate: string;
+  lines: SupplierPaymentLine[];
+  totalTetri: number;
+  paymentMethod: PaymentMethod;
+  comment?: string;
+  createdBy: string;
+  createdByName: string;
 }
 
 /* ------------------------------------------------------------------ */
@@ -427,6 +450,8 @@ export interface Sale {
   costTotalTetri: number;
   grossProfitTetri: number;
   paymentMethod: PaymentMethod;
+  /** რომელი ფასით გაიყიდა — ჩვეულებრივი თუ გამტანის. */
+  priceType?: 'RETAIL' | 'WHOLESALE';
   paidTetri: number;
   balanceDueTetri: number;
   status: 'active' | 'cancelled' | 'returned' | 'partially_returned';

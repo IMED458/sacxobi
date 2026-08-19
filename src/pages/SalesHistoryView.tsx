@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { FileDown, Printer, Receipt, RotateCcw, Search, XCircle } from 'lucide-react';
-import { Badge, Button, Card, CardHeader, EmptyState, Field, Input, Modal, Select, Table, Td, Th } from '../components/ui';
+import { Badge, Button, Card, CardHeader, EmptyState, Field, Input, Modal, NumberInput, Select, Table, Td, Th } from '../components/ui';
 import { useToast } from '../components/ui/Toast';
 import { useAuth } from '../context/AuthContext';
 import { useData } from '../context/DataContext';
@@ -403,18 +403,17 @@ export const SalesHistoryView: React.FC<{ mode?: 'sales' | 'returns' }> = ({ mod
                     {formatQty(item.quantity)} {item.unitSymbol}
                   </Td>
                   <Td className="text-right">
-                    <input
-                      type="number"
-                      step="0.001"
+                    <NumberInput
                       value={returnLines[idx]?.quantity ?? 0}
-                      onChange={(e) =>
+                      onChange={(v) =>
                         setReturnLines((prev) => {
                           const next = [...prev];
-                          next[idx] = { ...next[idx], quantity: Number(e.target.value) || 0 };
+                          next[idx] = { ...next[idx], quantity: v };
                           return next;
                         })
                       }
-                      className="w-24 text-right border border-slate-200 rounded-lg px-2 py-1 outline-none focus:ring-2 focus:ring-amber-500"
+                      placeholder="0"
+                      className="w-24 text-right"
                     />
                   </Td>
                   <Td>

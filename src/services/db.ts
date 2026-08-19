@@ -28,6 +28,7 @@ export const COL = {
   recipes: 'recipes',
   suppliers: 'suppliers',
   purchases: 'purchases',
+  supplierPayments: 'supplierPayments',
   lots: 'lots',
   stockLevels: 'stockLevels',
   stockMovements: 'stockMovements',

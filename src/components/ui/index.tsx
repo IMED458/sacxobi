@@ -98,6 +98,76 @@ export const Select: React.FC<React.SelectHTMLAttributes<HTMLSelectElement>> = (
   </select>
 );
 
+/**
+ * რიცხვითი ველი, რომელიც **ცარიელი რჩება** — ე.ი. „0"-ს არ ჩაგაწერს ძალით
+ * და შეგიძლიათ სრულად წაშალოთ და თავიდან აკრიფოთ.
+ */
+export const NumberInput: React.FC<{
+  value: number;
+  onChange: (value: number) => void;
+  placeholder?: string;
+  className?: string;
+  disabled?: boolean;
+  step?: string;
+  autoFocus?: boolean;
+}> = ({ value, onChange, placeholder = '0', className = '', disabled, step = '0.001', autoFocus }) => {
+  const [text, setText] = React.useState(value ? String(value) : '');
+
+  React.useEffect(() => {
+    const parsed = parseFloat(text.replace(',', '.'));
+    const current = isNaN(parsed) ? 0 : parsed;
+    if (current !== value) setText(value ? String(value) : '');
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [value]);
+
+  return (
+    <input
+      type="text"
+      inputMode="decimal"
+      step={step}
+      disabled={disabled}
+      autoFocus={autoFocus}
+      placeholder={placeholder}
+      value={text}
+      onFocus={(e) => e.currentTarget.select()}
+      onChange={(e) => {
+        const raw = e.target.value;
+        if (raw !== '' && !/^-?\d*[.,]?\d*$/.test(raw)) return;
+        setText(raw);
+        const parsed = parseFloat(raw.replace(',', '.'));
+        onChange(isNaN(parsed) ? 0 : parsed);
+      }}
+      className={`${INPUT_CLASS} ${className}`}
+    />
+  );
+};
+
+/** ფულის ველი — ტექსტად ინახება, ცარიელი დასაშვებია (0 ავტომატურად არ ჩნდება). */
+export const MoneyInput: React.FC<{
+  value: string;
+  onChange: (value: string) => void;
+  placeholder?: string;
+  className?: string;
+  disabled?: boolean;
+  autoFocus?: boolean;
+}> = ({ value, onChange, placeholder = '0.00', className = '', disabled, autoFocus }) => (
+  <input
+    type="text"
+    inputMode="decimal"
+    disabled={disabled}
+    autoFocus={autoFocus}
+    placeholder={placeholder}
+    value={value}
+    onFocus={(e) => e.currentTarget.select()}
+    onChange={(e) => {
+      const raw = e.target.value;
+      if (raw !== '' && !/^\d*[.,]?\d*$/.test(raw)) return;
+      onChange(raw);
+    }}
+    className={`${INPUT_CLASS} ${className}`}
+  />
+);
+
 export const Checkbox: React.FC<{
   checked: boolean;
   onChange: (v: boolean) => void;

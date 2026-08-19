@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { ArrowDownCircle, ArrowUpCircle, CalendarCheck, Lock, LockOpen, Plus, Wallet } from 'lucide-react';
-import { Badge, Button, Card, CardHeader, EmptyState, Field, Input, Modal, Select, StatCard, Table, Td, Textarea, Th } from '../components/ui';
+import { Badge, Button, Card, CardHeader, EmptyState, Field, Input, Modal, MoneyInput, Select, StatCard, Table, Td, Textarea, Th } from '../components/ui';
 import { useToast } from '../components/ui/Toast';
 import { useAuth } from '../context/AuthContext';
 import { useData } from '../context/DataContext';
@@ -173,7 +173,7 @@ export const ExpensesView: React.FC = () => {
             </Select>
           </Field>
           <Field label="თანხა (₾)" required>
-            <Input value={form.amount} onChange={(e) => setForm({ ...form, amount: e.target.value })} inputMode="decimal" />
+            <MoneyInput value={form.amount} onChange={(v) => setForm({ ...form, amount: v })} />
           </Field>
           <Field label="საფუძველი" required className="md:col-span-2">
             <Input value={form.reason} onChange={(e) => setForm({ ...form, reason: e.target.value })} />
@@ -206,7 +206,7 @@ export const ShiftView: React.FC = () => {
 
   const [totals, setTotals] = useState<ShiftTotals | null>(null);
   const [shifts, setShifts] = useState<CashierShift[]>([]);
-  const [openingCash, setOpeningCash] = useState('0');
+  const [openingCash, setOpeningCash] = useState('');
   const [actualCash, setActualCash] = useState('');
   const [comment, setComment] = useState('');
   const [saving, setSaving] = useState(false);
@@ -310,7 +310,7 @@ export const ShiftView: React.FC = () => {
         {!myShift ? (
           <div className="p-6 max-w-sm space-y-4">
             <Field label="საწყისი ნაღდი ფული (₾)" required>
-              <Input value={openingCash} onChange={(e) => setOpeningCash(e.target.value)} inputMode="decimal" />
+              <MoneyInput value={openingCash} onChange={setOpeningCash} />
             </Field>
             <Button icon={LockOpen} onClick={() => void doOpen()} loading={saving} disabled={!can('shift.open')}>
               ცვლის გახსნა
@@ -399,7 +399,7 @@ export const ShiftView: React.FC = () => {
             )}
           </div>
           <Field label="ფაქტობრივი ნაღდი (₾)" required>
-            <Input value={actualCash} onChange={(e) => setActualCash(e.target.value)} inputMode="decimal" />
+            <MoneyInput value={actualCash} onChange={setActualCash} autoFocus />
           </Field>
           <Field label="კომენტარი">
             <Input value={comment} onChange={(e) => setComment(e.target.value)} />
@@ -425,7 +425,7 @@ export const ShiftView: React.FC = () => {
       >
         <div className="space-y-4">
           <Field label="თანხა (₾)" required>
-            <Input value={cashAmount} onChange={(e) => setCashAmount(e.target.value)} inputMode="decimal" />
+            <MoneyInput value={cashAmount} onChange={setCashAmount} autoFocus />
           </Field>
           <Field label="საფუძველი" required>
             <Input value={cashReason} onChange={(e) => setCashReason(e.target.value)} />
@@ -588,7 +588,7 @@ export const DayCloseView: React.FC = () => {
             </div>
           )}
           <Field label="ფაქტობრივი ნაღდი სალაროში (₾)">
-            <Input value={actualCash} onChange={(e) => setActualCash(e.target.value)} inputMode="decimal" />
+            <MoneyInput value={actualCash} onChange={setActualCash} autoFocus />
           </Field>
           <Field label="კომენტარი">
             <Input value={comment} onChange={(e) => setComment(e.target.value)} />

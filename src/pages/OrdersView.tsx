@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { ClipboardList, Plus, Trash2, Truck, Wallet, XCircle } from 'lucide-react';
-import { Badge, Button, Card, CardHeader, EmptyState, Field, Input, Modal, Select, Table, Td, Textarea, Th } from '../components/ui';
+import { Badge, Button, Card, CardHeader, EmptyState, Field, Input, Modal, MoneyInput, NumberInput, Select, Table, Td, Textarea, Th } from '../components/ui';
 import { useToast } from '../components/ui/Toast';
 import { useAuth } from '../context/AuthContext';
 import { useData } from '../context/DataContext';
@@ -44,7 +44,7 @@ export const OrdersView: React.FC = () => {
   const [customerName, setCustomerName] = useState('');
   const [customerPhone, setCustomerPhone] = useState('');
   const [dueDate, setDueDate] = useState('');
-  const [prepaid, setPrepaid] = useState('0');
+  const [prepaid, setPrepaid] = useState('');
   const [comment, setComment] = useState('');
   const [lines, setLines] = useState<OrderLineInput[]>([]);
 
@@ -119,7 +119,7 @@ export const OrdersView: React.FC = () => {
       setCustomerName('');
       setCustomerPhone('');
       setDueDate('');
-      setPrepaid('0');
+      setPrepaid('');
       setComment('');
       setLines([]);
       void load();
@@ -348,17 +348,15 @@ export const OrdersView: React.FC = () => {
                     </div>
                     <div className="col-span-3">
                       <Field label={`რაოდენობა (${line.unitSymbol})`}>
-                        <Input
+                        <NumberInput
                           value={line.quantity}
-                          onChange={(e) =>
+                          onChange={(v) =>
                             setLines((prev) => {
                               const next = [...prev];
-                              next[idx] = { ...next[idx], quantity: Number(e.target.value) || 0 };
+                              next[idx] = { ...next[idx], quantity: v };
                               return next;
                             })
                           }
-                          type="number"
-                          step="0.001"
                         />
                       </Field>
                     </div>
@@ -393,7 +391,7 @@ export const OrdersView: React.FC = () => {
 
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4 items-end">
             <Field label="ავანსი (₾)">
-              <Input value={prepaid} onChange={(e) => setPrepaid(e.target.value)} inputMode="decimal" />
+              <MoneyInput value={prepaid} onChange={setPrepaid} />
             </Field>
             <Field label="კომენტარი" className="md:col-span-1">
               <Textarea rows={2} value={comment} onChange={(e) => setComment(e.target.value)} />
@@ -435,7 +433,7 @@ export const OrdersView: React.FC = () => {
       >
         <div className="space-y-4">
           <Field label="თანხა (₾)" required>
-            <Input value={payAmount} onChange={(e) => setPayAmount(e.target.value)} inputMode="decimal" />
+            <MoneyInput value={payAmount} onChange={setPayAmount} autoFocus />
           </Field>
           <Field label="გადახდის ფორმა">
             <Select value={payMethod} onChange={(e) => setPayMethod(e.target.value as PaymentMethod)}>

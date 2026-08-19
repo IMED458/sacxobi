@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { Building2, Plus, Settings as SettingsIcon, Wheat } from 'lucide-react';
-import { Badge, Button, Card, CardHeader, Checkbox, Field, Input, Modal, Table, Td, Textarea, Th } from '../components/ui';
+import { Badge, Button, Card, CardHeader, Checkbox, Field, Input, Modal, NumberInput, Table, Td, Textarea, Th } from '../components/ui';
 import { useToast } from '../components/ui/Toast';
 import { useAuth } from '../context/AuthContext';
 import { useData } from '../context/DataContext';
@@ -136,17 +136,17 @@ export const SettingsView: React.FC = () => {
           <div className="p-5 space-y-5">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <Field label="პატარა პურის გრამაჟი (გ)" required hint="ცვლილება ძველ ჩანაწერებს არ შეეხება — ისინი snapshot-ს ინახავენ">
-                <Input
+                <NumberInput
                   value={draft.smallBreadWeightGrams}
-                  onChange={(e) => setDraft({ ...draft, smallBreadWeightGrams: Number(e.target.value) || 0 })}
-                  type="number"
+                  onChange={(v) => setDraft({ ...draft, smallBreadWeightGrams: v })}
+                  step="1"
                 />
               </Field>
               <Field label="დიდი პურის გრამაჟი (გ)" required>
-                <Input
+                <NumberInput
                   value={draft.largeBreadWeightGrams}
-                  onChange={(e) => setDraft({ ...draft, largeBreadWeightGrams: Number(e.target.value) || 0 })}
-                  type="number"
+                  onChange={(v) => setDraft({ ...draft, largeBreadWeightGrams: v })}
+                  step="1"
                 />
               </Field>
             </div>

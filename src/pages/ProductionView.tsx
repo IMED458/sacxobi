@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { CookingPot, FileDown, Plus, Trash2 } from 'lucide-react';
-import { Badge, Button, Card, CardHeader, EmptyState, Field, Input, Modal, Select, Table, Td, Th } from '../components/ui';
+import { Badge, Button, Card, CardHeader, EmptyState, Field, Input, Modal, NumberInput, Select, Table, Td, Th } from '../components/ui';
 import { useToast } from '../components/ui/Toast';
 import { useAuth } from '../context/AuthContext';
 import { useData } from '../context/DataContext';
@@ -29,7 +29,7 @@ export const ProductionView: React.FC = () => {
   const [floor, setFloor] = useState<Floor>(defaultFloor);
   const [productId, setProductId] = useState('');
   const [goodQty, setGoodQty] = useState('');
-  const [wasteQty, setWasteQty] = useState('0');
+  const [wasteQty, setWasteQty] = useState('');
   const [note, setNote] = useState('');
   const [lines, setLines] = useState<ConsumptionInput[]>([]);
   const [saving, setSaving] = useState(false);
@@ -101,7 +101,7 @@ export const ProductionView: React.FC = () => {
   const resetForm = () => {
     setProductId('');
     setGoodQty('');
-    setWasteQty('0');
+    setWasteQty('');
     setNote('');
     setLines([]);
   };
@@ -272,7 +272,7 @@ export const ProductionView: React.FC = () => {
                   : undefined
               }
             >
-              <Input value={goodQty} onChange={(e) => setGoodQty(e.target.value)} inputMode="decimal" placeholder="0" />
+              <Input value={goodQty} onChange={(e) => setGoodQty(e.target.value)} inputMode="decimal" placeholder="მაგ. 40" />
             </Field>
           </div>
 
@@ -347,13 +347,7 @@ export const ProductionView: React.FC = () => {
                       </div>
                       <div className="col-span-3">
                         <Field label={`რაოდენობა (${material?.unitSymbol ?? ''})`} hint={`ხელმისაწვდომია ${formatQty(available)}`}>
-                          <Input
-                            value={line.quantity}
-                            onChange={(e) => updateLine(idx, { quantity: Number(e.target.value) || 0 })}
-                            inputMode="decimal"
-                            type="number"
-                            step="0.001"
-                          />
+                          <NumberInput value={line.quantity} onChange={(v) => updateLine(idx, { quantity: v })} />
                         </Field>
                       </div>
                       <div className="col-span-1 flex justify-end pb-2">

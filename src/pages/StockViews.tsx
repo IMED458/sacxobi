@@ -484,9 +484,12 @@ export const StocktakeView: React.FC = () => {
               <Td className="text-right">
                 <input
                   value={actual ?? ''}
-                  onChange={(e) => setActuals((prev) => ({ ...prev, [r.key]: e.target.value }))}
-                  type="number"
-                  step="0.001"
+                  onChange={(e) => {
+                    const raw = e.target.value;
+                    if (raw !== '' && !/^\d*[.,]?\d*$/.test(raw)) return;
+                    setActuals((prev) => ({ ...prev, [r.key]: raw }));
+                  }}
+                  inputMode="decimal"
                   placeholder="—"
                   className="w-28 text-right border border-slate-200 rounded-lg px-2 py-1 outline-none focus:ring-2 focus:ring-amber-500"
                 />
