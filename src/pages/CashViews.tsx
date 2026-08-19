@@ -346,6 +346,7 @@ export const ShiftView: React.FC = () => {
                 <Th className="text-right">ფაქტობრივი</Th>
                 <Th className="text-right">სხვაობა</Th>
                 <Th>სტატუსი</Th>
+                <Th />
               </tr>
             }
           >
@@ -362,6 +363,18 @@ export const ShiftView: React.FC = () => {
                 </Td>
                 <Td>
                   <Badge tone={s.status === 'open' ? 'green' : 'slate'}>{s.status === 'open' ? 'ღია' : 'დახურული'}</Badge>
+                </Td>
+                <Td>
+                  <div className="flex justify-end">
+                    <DeleteRecordButton
+                      collection={COL.shifts}
+                      id={s.id}
+                      entityType="shift"
+                      label={`ცვლა — ${s.userName}`}
+                      warning="ცვლის ჩანაწერი წაიშლება. მასზე მიბმული გაყიდვები რჩება."
+                      onDeleted={() => void refresh()}
+                    />
+                  </div>
                 </Td>
               </tr>
             ))}

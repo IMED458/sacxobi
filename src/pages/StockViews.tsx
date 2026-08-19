@@ -1,14 +1,17 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { AlertTriangle, ClipboardList, FileClock, Package, Snowflake, Warehouse } from 'lucide-react';
-import { Badge, Button, Card, CardHeader, EmptyState, Field, Input, Modal, Select, Table, Td, Th } from '../components/ui';
+import { AlertTriangle, ClipboardList, FileClock, Package, Snowflake, Trash2, Warehouse } from 'lucide-react';
+import { Badge, Button, Card, CardHeader, EmptyState, Field, Input, Modal, MoneyInput, NumberInput, Select, Table, Td, Th } from '../components/ui';
 import { useToast } from '../components/ui/Toast';
 import { useAuth } from '../context/AuthContext';
 import { useData } from '../context/DataContext';
 import { addDays, formatDateTime, todayBusinessDate } from '../lib/dates';
-import { formatMoney, formatQty, safeDiv } from '../lib/money';
+import { formatMoney, formatQty, safeDiv, tetriToInput, toTetri } from '../lib/money';
 import { LOCATION_LABELS } from '../lib/permissions';
 import { fetchMovementsRange } from '../services/reports';
 import { createStocktake, type StocktakeLineInput } from '../services/stocktake';
+import { deleteStockRecord, setStockQuantity } from '../services/opening';
+import { DeleteRecordButton } from '../components/DeleteRecordButton';
+import { COL } from '../services/db';
 import type { MovementType, StockLocation, StockMovement } from '../types';
 
 export const MOVEMENT_LABELS: Record<MovementType, string> = {
@@ -47,10 +50,69 @@ interface StockRow {
  * (ადრე მაცივარში მხოლოდ ნედლეული ჩანდა და შესყიდული პროდუქტი „იკარგებოდა".)
  */
 export const StockByLocationView: React.FC<{ location: StockLocation }> = ({ location }) => {
-  const { materials, products, stockLevels } = useData();
-  const { can } = useAuth();
+  const { materials, products, stockLevels, settings } = useData();
+  const { user, can } = useAuth();
+  const toast = useToast();
   const [search, setSearch] = useState('');
   const showValue = can('inventory.view');
+
+  const [editRow, setEditRow] = useState<StockRow | null>(null);
+  const [editQty, setEditQty] = useState(0);
+  const [editCost, setEditCost] = useState('');
+  const [editReason, setEditReason] = useState('');
+  const [saving, setSaving] = useState(false);
+  const [deleteRow, setDeleteRow] = useState<StockRow | null>(null);
+  const [deleteReason, setDeleteReason] = useState('');
+
+  const openEdit = (row: StockRow) => {
+    setEditRow(row);
+    setEditQty(row.quantity);
+    setEditCost(row.quantity ? tetriToInput(Math.round(safeDiv(row.valueTetri, row.quantity))) : '');
+    setEditReason('');
+  };
+
+  const submitEdit = async () => {
+    if (!user || !editRow) return;
+    setSaving(true);
+    try {
+      await setStockQuantity(user, settings, {
+        itemType: editRow.itemType,
+        itemId: editRow.itemId,
+        itemName: editRow.name,
+        unitSymbol: editRow.unitSymbol,
+        location,
+        targetQuantity: editQty,
+        unitCostTetri: editCost ? toTetri(editCost) : Math.round(safeDiv(editRow.valueTetri, editRow.quantity || 1)),
+        currentQuantity: editRow.quantity,
+        reason: editReason
+      });
+      toast.success('ნაშთი განახლდა');
+      setEditRow(null);
+    } catch (err) {
+      toast.error(err);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const submitDelete = async () => {
+    if (!user || !deleteRow) return;
+    setSaving(true);
+    try {
+      await deleteStockRecord(
+        user,
+        { itemType: deleteRow.itemType, itemId: deleteRow.itemId, itemName: deleteRow.name, location },
+        deleteReason
+      );
+      toast.success('ნაშთის ჩანაწერი წაიშალა');
+      setDeleteRow(null);
+      setDeleteReason('');
+    } catch (err) {
+      toast.error(err);
+    } finally {
+      setSaving(false);
+    }
+  };
 
   const rows: StockRow[] = useMemo(() => {
     const list: StockRow[] = [];
@@ -166,12 +228,93 @@ export const StockByLocationView: React.FC<{ location: StockLocation }> = ({ loc
                 )}
                 {showValue && <Td className="text-right">{formatMoney(r.valueTetri)}</Td>}
                 <Td className="text-right">{r.sellingPriceTetri != null ? formatMoney(r.sellingPriceTetri) : '—'}</Td>
-                <Td>{low && <Badge tone="red">დაბალი ნაშთი</Badge>}</Td>
+                <Td>
+                  <div className="flex items-center gap-1 justify-end">
+                    {low && <Badge tone="red">დაბალი</Badge>}
+                    {can('inventory.adjust') && (
+                      <Button size="sm" variant="secondary" onClick={() => openEdit(r)}>
+                        რედაქტირება
+                      </Button>
+                    )}
+                    {can('admin.delete') && (
+                      <button
+                        onClick={() => setDeleteRow(r)}
+                        title="ნაშთის ჩანაწერის წაშლა"
+                        className="p-1.5 rounded-lg text-slate-300 hover:text-red-600 hover:bg-red-50 cursor-pointer"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    )}
+                  </div>
+                </Td>
               </tr>
             );
           })}
         </Table>
       )}
+
+      <Modal
+        open={!!editRow}
+        onClose={() => setEditRow(null)}
+        title={`ნაშთის რედაქტირება — ${editRow?.name ?? ''}`}
+        subtitle={LOCATION_LABELS[location]}
+        size="sm"
+        footer={
+          <>
+            <Button variant="secondary" onClick={() => setEditRow(null)}>
+              გაუქმება
+            </Button>
+            <Button onClick={() => void submitEdit()} loading={saving} disabled={!editReason.trim()}>
+              შენახვა
+            </Button>
+          </>
+        }
+      >
+        <div className="space-y-4">
+          <div className="bg-slate-50 rounded-xl p-3 text-xs text-slate-600">
+            მიმდინარე ნაშთი:{' '}
+            <span className="font-bold text-slate-900">
+              {formatQty(editRow?.quantity ?? 0)} {editRow?.unitSymbol}
+            </span>
+          </div>
+          <Field label="ახალი რაოდენობა" required>
+            <NumberInput value={editQty} onChange={setEditQty} autoFocus />
+          </Field>
+          <Field label="ერთეულის ფასი (₾)" hint="გამოიყენება მხოლოდ ნაშთის გაზრდისას">
+            <MoneyInput value={editCost} onChange={setEditCost} />
+          </Field>
+          <Field label="საფუძველი" required hint="ჩაიწერება მოძრაობებში და Audit Log-ში">
+            <Input value={editReason} onChange={(e) => setEditReason(e.target.value)} placeholder="მაგ. ხელით კორექტირება" />
+          </Field>
+        </div>
+      </Modal>
+
+      <Modal
+        open={!!deleteRow}
+        onClose={() => setDeleteRow(null)}
+        title="ნაშთის ჩანაწერის წაშლა"
+        subtitle={deleteRow?.name}
+        size="sm"
+        footer={
+          <>
+            <Button variant="secondary" onClick={() => setDeleteRow(null)}>
+              გაუქმება
+            </Button>
+            <Button variant="danger" onClick={() => void submitDelete()} loading={saving} disabled={!deleteReason.trim()}>
+              წაშლა
+            </Button>
+          </>
+        }
+      >
+        <div className="space-y-3">
+          <p className="text-xs text-red-700 bg-red-50 border border-red-200 rounded-xl p-3">
+            წაიშლება ამ ადგილას არსებული ნაშთი და მისი ყველა პარტია. მოძრაობების ისტორია დარჩება.
+          </p>
+          <Field label="წაშლის მიზეზი" required>
+            <Input value={deleteReason} onChange={(e) => setDeleteReason(e.target.value)} autoFocus />
+          </Field>
+        </div>
+      </Modal>
     </Card>
   );
 };
@@ -341,6 +484,7 @@ export const StockMovementsView: React.FC = () => {
               <Th className="text-right">ღირებულება</Th>
               <Th>დოკუმენტი</Th>
               <Th>მომხმარებელი</Th>
+              <Th />
             </tr>
           }
         >
@@ -359,6 +503,17 @@ export const StockMovementsView: React.FC = () => {
               <Td className="text-right">{formatMoney(m.totalCostTetri)}</Td>
               <Td className="text-xs text-slate-500">{m.referenceNo ?? m.referenceType}</Td>
               <Td className="text-xs">{m.userName}</Td>
+              <Td>
+                <div className="flex justify-end">
+                  <DeleteRecordButton
+                    collection={COL.stockMovements}
+                    id={m.id}
+                    entityType="stockMovement"
+                    label={`მოძრაობა: ${m.itemName}`}
+                    warning="ჟურნალის ჩანაწერი წაიშლება. მიმდინარე ნაშთი არ შეიცვლება — ის ცალკე ინახება."
+                  />
+                </div>
+              </Td>
             </tr>
           ))}
         </Table>

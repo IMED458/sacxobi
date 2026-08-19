@@ -156,6 +156,7 @@ export const SalesHistoryView: React.FC<{ mode?: 'sales' | 'returns' }> = ({ mod
                 <Th className="text-right">დაბრუნებული თანხა</Th>
                 <Th>მიზეზი</Th>
                 <Th>ვინ</Th>
+                <Th />
               </tr>
             }
           >
@@ -177,6 +178,18 @@ export const SalesHistoryView: React.FC<{ mode?: 'sales' | 'returns' }> = ({ mod
                 <Td className="text-right font-bold text-red-600">{formatMoney(r.totalRefundTetri)}</Td>
                 <Td className="text-xs">{r.reason}</Td>
                 <Td className="text-xs">{r.createdByName}</Td>
+                <Td>
+                  <div className="flex justify-end">
+                    <DeleteRecordButton
+                      collection={COL.returns}
+                      id={r.id}
+                      entityType="return"
+                      label={`დაბრუნება ${r.returnNo}`}
+                      warning="დაბრუნების დოკუმენტი წაიშლება. მარაგი ავტომატურად არ კორექტირდება — საჭიროებისას გამოიყენეთ მარაგის რედაქტირება."
+                      onDeleted={load}
+                    />
+                  </div>
+                </Td>
               </tr>
             ))}
           </Table>

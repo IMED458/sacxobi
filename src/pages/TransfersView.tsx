@@ -10,6 +10,8 @@ import { FLOOR_LABELS } from '../lib/permissions';
 import { downloadBlob, generateTransferSheetPdf } from '../lib/pdf';
 import { cancelTransferRequest, createTransferRequest, fulfillTransferRequest } from '../services/transfers';
 import type { TransferRequest, TransferStatus } from '../types';
+import { DeleteRecordButton } from '../components/DeleteRecordButton';
+import { COL } from '../services/db';
 
 const STATUS: Record<TransferStatus, { label: string; tone: 'amber' | 'blue' | 'green' | 'red' }> = {
   PENDING: { label: 'მოლოდინში', tone: 'amber' },
@@ -145,6 +147,13 @@ export const TransfersView: React.FC = () => {
               >
                 <FileDown className="w-4 h-4" />
               </button>
+              <DeleteRecordButton
+                collection={COL.transferRequests}
+                id={t.id}
+                entityType="transferRequest"
+                label={`გადატანა ${t.requestNo}`}
+                warning="მოთხოვნა წაიშლება. უკვე გადატანილი პროდუქცია მარაგში რჩება — საჭიროებისას შეასწორეთ ნაშთი."
+              />
             </div>
           </Td>
         </tr>

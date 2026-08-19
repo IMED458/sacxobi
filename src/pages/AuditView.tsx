@@ -6,6 +6,7 @@ import { addDays, formatDateTime, todayBusinessDate } from '../lib/dates';
 import { COL, colRef, limit, orderBy, query } from '../services/db';
 import { getDocs, where } from 'firebase/firestore';
 import type { AuditLog } from '../types';
+import { DeleteRecordButton } from '../components/DeleteRecordButton';
 
 export const AuditView: React.FC = () => {
   const toast = useToast();
@@ -99,6 +100,7 @@ export const AuditView: React.FC = () => {
               <Th>ობიექტი</Th>
               <Th>აღწერა</Th>
               <Th>მიზეზი</Th>
+              <Th />
             </tr>
           }
         >
@@ -110,6 +112,18 @@ export const AuditView: React.FC = () => {
               <Td className="text-xs text-slate-500">{a.entityType}</Td>
               <Td className="text-sm">{a.summary}</Td>
               <Td className="text-xs text-slate-500">{a.reason ?? '—'}</Td>
+              <Td onClick={(e) => e.stopPropagation()}>
+                <div className="flex justify-end">
+                  <DeleteRecordButton
+                    collection={COL.auditLogs}
+                    id={a.id}
+                    entityType="auditLog"
+                    label={`ჟურნალის ჩანაწერი: ${a.action}`}
+                    warning="⚠️ ეს ჟურნალის ჩანაწერია — სწორედ ის ინახავს ინფორმაციას, ვინ რა გააკეთა. წაშლის შემდეგ ეს კვალი აღარ იარსებებს."
+                    onDeleted={() => setItems((prev) => prev.filter((x) => x.id !== a.id))}
+                  />
+                </div>
+              </Td>
             </tr>
           ))}
         </Table>

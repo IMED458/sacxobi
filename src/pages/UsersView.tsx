@@ -14,6 +14,8 @@ import {
 } from '../lib/permissions';
 import { createUser, resetUserPassword, setUserStatus, updateUser } from '../services/users';
 import type { AppUser, Floor, Permission, UserRole } from '../types';
+import { DeleteRecordButton } from '../components/DeleteRecordButton';
+import { COL } from '../services/db';
 
 const EMPTY = {
   firstName: '',
@@ -208,6 +210,15 @@ export const UsersView: React.FC = () => {
                       >
                         <UserX className="w-4 h-4" />
                       </button>
+                    )}
+                    {u.id !== user?.id && (
+                      <DeleteRecordButton
+                        collection={COL.users}
+                        id={u.id}
+                        entityType="user"
+                        label={`მომხმარებელი „${u.username}"`}
+                        warning="მომხმარებელი სამუდამოდ წაიშლება და ვეღარ შევა სისტემაში. მისი გაყიდვები და ჟურნალის ჩანაწერები რჩება. თუ მხოლოდ წვდომის შეზღუდვა გინდათ — სჯობს გათიშვა."
+                      />
                     )}
                   </div>
                 </Td>

@@ -30,6 +30,7 @@ import { CatalogView } from './pages/CatalogView';
 import { MaterialsView } from './pages/MaterialsView';
 import { AuditView } from './pages/AuditView';
 import { SettingsView } from './pages/SettingsView';
+import { OpeningBalancesView } from './pages/OpeningBalancesView';
 import { fetchBusinessDay } from './services/businessDays';
 import { todayBusinessDate } from './lib/dates';
 import type { Permission } from './types';
@@ -213,12 +214,14 @@ const Workspace: React.FC = () => {
             storageKey="admin"
             tabs={[
               { id: 'catalog', label: 'პროდუქტები & ფასები', hidden: !can('product.manage') && !can('price.manage') },
+              { id: 'opening', label: 'საწყისი ნაშთები', hidden: !can('inventory.adjust') },
               { id: 'materials', label: 'ნედლეული & რეცეპტები', hidden: !can('material.manage') && !can('recipe.manage') },
               { id: 'users', label: 'მომხმარებლები', hidden: !can('user.manage') },
               { id: 'audit', label: 'Audit Log', hidden: !can('audit.view') },
               { id: 'settings', label: 'კომპანია & პარამეტრები', hidden: !can('settings.manage') }
             ]}
             render={(id) => {
+              if (id === 'opening') return <OpeningBalancesView />;
               if (id === 'materials') return <MaterialsView />;
               if (id === 'users') return <UsersView />;
               if (id === 'audit') return <AuditView />;
